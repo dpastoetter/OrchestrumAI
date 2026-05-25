@@ -1,0 +1,23 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Dependencies & build
+node_modules/
+dist/
+build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
