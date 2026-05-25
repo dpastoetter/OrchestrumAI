@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openminiagents"
+version = "0.1.0"
+description = "Google ADK workflow agents with a request submission UI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "dpastoetter" }]
+dependencies = [
+    "google-adk>=2.1,<3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "sse-starlette>=2.0",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    "google-api-python-client>=2.100",
+    "google-auth>=2.25",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+llm = ["litellm>=1.50", "pypdf>=4.0", "oauth-codex>=0.1"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "litellm>=1.50",
+    "oauth-codex>=0.1",
+]
+
+[project.scripts]
+openminiagents = "openminiagents.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/openminiagents"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+pythonpath = [".", "backend", "agents"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

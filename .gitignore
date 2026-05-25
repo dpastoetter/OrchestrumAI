@@ -21,3 +21,10 @@ venv/
 # IDE
 .idea/
 .vscode/
+
+# App data
+data/
+*.db
+
+# Frontend build
+frontend/dist/
