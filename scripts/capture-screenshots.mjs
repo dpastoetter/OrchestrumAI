@@ -5,12 +5,31 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, "..", "docs", "screenshots");
-const BASE = process.env.OMA_UI_BASE ?? "http://127.0.0.1:5173";
-const API = process.env.OMA_API_BASE ?? "http://127.0.0.1:8000";
+const BASE = process.env.ORCHESTRUMAI_UI_BASE ?? process.env.OMA_UI_BASE ?? "http://127.0.0.1:5173";
+const API = process.env.ORCHESTRUMAI_API_BASE ?? process.env.OMA_API_BASE ?? "http://127.0.0.1:8000";
 
 async function waitForApp(page) {
   await page.waitForSelector("nav", { timeout: 15000 });
   await page.waitForTimeout(800);
+}
+
+async function prepareUi(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("orchestrumai_onboarding_done", "1");
+    localStorage.setItem("openminiagents_onboarding_done", "1");
+    localStorage.setItem("orchestrumai_theme", "light");
+  });
+}
+
+async function enableAdvancedMode() {
+  const res = await fetch(`${API}/api/workflow/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ advanced_mode: true }),
+  });
+  if (!res.ok) {
+    console.warn("Could not enable advanced mode:", res.status, await res.text());
+  }
 }
 
 async function createWorkflowRequest() {
@@ -43,8 +62,12 @@ async function createWorkflowRequest() {
   return body.id;
 }
 
+await enableAdvancedMode();
+
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+const page = await context.newPage();
+await prepareUi(page);
 
 await mkdir(OUT, { recursive: true });
 
@@ -52,17 +75,16 @@ await page.goto(`${BASE}/`);
 await waitForApp(page);
 await page.screenshot({ path: path.join(OUT, "requests.png"), fullPage: true });
 
+await page.goto(`${BASE}/workflows`);
+await waitForApp(page);
+await page.screenshot({ path: path.join(OUT, "workflows.png"), fullPage: true });
+
 await page.goto(`${BASE}/submit`);
 await waitForApp(page);
-const workflowBtn = page.getByRole("button", { name: /General workflow/i });
-if (await workflowBtn.count()) {
-  await workflowBtn.click();
-  await page.waitForTimeout(600);
-}
-await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 3));
-await page.waitForTimeout(400);
+await page.waitForSelector("text=Agent interaction", { timeout: 10000 }).catch(() => {});
+await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+await page.waitForTimeout(500);
 await page.screenshot({ path: path.join(OUT, "submit.png"), fullPage: true });
-await page.screenshot({ path: path.join(OUT, "submit-topology.png"), fullPage: true });
 
 await page.goto(`${BASE}/settings`);
 await waitForApp(page);
@@ -75,7 +97,8 @@ try {
   console.warn("Could not create stub request:", e.message);
   const list = await fetch(`${API}/api/requests`);
   const items = await list.json();
-  requestId = items[0]?.id;
+  const awaiting = items.find((r) => r.status === "awaiting_approval");
+  requestId = awaiting?.id ?? items[0]?.id;
 }
 
 if (requestId) {

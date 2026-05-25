@@ -28,14 +28,19 @@ OrchestrumAI runs multi-step agents that **pause for your approval** before exec
 |----------|---------------------------|
 | ![Requests list](docs/screenshots/requests.png) | ![Submit with Simple / Sequential / Orchestrator canvas and specialist palette](docs/screenshots/submit.png) |
 
-| Request detail (approval) | Settings |
-|---------------------------|----------|
-| ![Request detail with plan, topology chips, and approve/reject](docs/screenshots/request-detail.png) | ![Settings — default LLM, workflow agent defaults, ChatGPT OAuth](docs/screenshots/settings.png) |
+| Request detail (approval) | My workflows |
+|---------------------------|--------------|
+| ![Request detail with plan, topology chips, and approve/reject](docs/screenshots/request-detail.png) | ![Workflow templates, schedules, and run controls](docs/screenshots/workflows.png) |
+
+| Settings |
+|----------|
+| ![Settings — LLM providers, advanced mode, automation](docs/screenshots/settings.png) |
 
 Regenerate after UI changes (with `make dev-backend` and `make dev-frontend` running):
 
 ```bash
-cd scripts && npm install && node capture-screenshots.mjs
+cd scripts && npm install && npx playwright install chromium
+node capture-screenshots.mjs
 ```
 
 ---
