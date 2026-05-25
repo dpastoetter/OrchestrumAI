@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Google ADK workflow agents with a request submission UI"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 authors = [{ name = "dpastoetter" }]
 dependencies = [
     "google-adk>=2.1,<3",

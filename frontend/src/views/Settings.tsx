@@ -184,16 +184,7 @@ export function Settings() {
       <div>
         <h2 className="text-lg font-medium">AI providers</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Connect models like{" "}
-          <a
-            className="text-sky-400 hover:underline"
-            href="https://github.com/browseros-ai/BrowserOS"
-            target="_blank"
-            rel="noreferrer"
-          >
-            BrowserOS
-          </a>
-          : API keys, local Ollama/LM Studio, Gemini native, or ChatGPT Plus/Pro OAuth.
+          Connect API keys, local Ollama/LM Studio, Gemini native, or ChatGPT Plus/Pro OAuth.
         </p>
       </div>
 

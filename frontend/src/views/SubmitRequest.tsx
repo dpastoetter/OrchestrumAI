@@ -1,15 +1,42 @@
-import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { FileDropzone } from "../components/FileDropzone";
+import { api, type ProviderCatalogItem } from "../api";
 import type { AgentInfo, AgentType, Priority } from "../types";
+
+const AGENT_META: Record<
+  AgentType,
+  { title: string; blurb: string; icon: string; accent: string }
+> = {
+  doc_to_sheets: {
+    title: "Document → Sheets",
+    blurb: "Upload a file, preview extracted rows, approve, then append to Google Sheets.",
+    icon: "📊",
+    accent: "border-emerald-600/50 bg-emerald-950/30 ring-emerald-500/40",
+  },
+  workflow: {
+    title: "General workflow",
+    blurb: "Multi-step agent with planning, execution, and human approval gates.",
+    icon: "⚡",
+    accent: "border-sky-600/50 bg-sky-950/30 ring-sky-500/40",
+  },
+};
+
+const PRIORITIES: { value: Priority; label: string; hint: string }[] = [
+  { value: "low", label: "Low", hint: "When you can wait" },
+  { value: "normal", label: "Normal", hint: "Default" },
+  { value: "high", label: "High", hint: "Needs attention soon" },
+];
 
 export function SubmitRequest() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [providers, setProviders] = useState<ProviderCatalogItem[]>([]);
+  const [defaultProviderId, setDefaultProviderId] = useState("");
+  const [defaultModelId, setDefaultModelId] = useState("");
   const [useCustomLlm, setUseCustomLlm] = useState(false);
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
-  const [providers, setProviders] = useState<{ id: string; models: { id: string; label: string }[] }[]>([]);
   const [agentType, setAgentType] = useState<AgentType>("doc_to_sheets");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -21,25 +48,48 @@ export function SubmitRequest() {
 
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
-    api.getProviders().then((d) => {
-      setProviders(d.providers);
-      setProviderId(d.settings.default_provider_id);
-      setModelId(d.settings.default_model_id);
-    }).catch(() => {});
+    api
+      .getProviders()
+      .then((d) => {
+        setProviders(d.providers);
+        setDefaultProviderId(d.settings.default_provider_id);
+        setDefaultModelId(d.settings.default_model_id);
+        setProviderId(d.settings.default_provider_id);
+        setModelId(d.settings.default_model_id);
+      })
+      .catch(() => {});
   }, []);
+
+  const agentOptions = useMemo(() => {
+    if (agents.length) return agents;
+    return [
+      { id: "workflow" as const, name: AGENT_META.workflow.title, description: AGENT_META.workflow.blurb },
+      { id: "doc_to_sheets" as const, name: AGENT_META.doc_to_sheets.title, description: AGENT_META.doc_to_sheets.blurb },
+    ];
+  }, [agents]);
+
+  const isDoc = agentType === "doc_to_sheets";
+  const selectedProvider = providers.find((p) => p.id === providerId);
+  const defaultProvider = providers.find((p) => p.id === defaultProviderId);
+
+  const canSubmit =
+    title.trim().length > 0 &&
+    description.trim().length > 0 &&
+    (!isDoc || file !== null) &&
+    !busy;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) return;
-    if (agentType === "doc_to_sheets" && !file) {
-      setError("Please choose a document to upload (PDF, CSV, or XLSX).");
+    if (!canSubmit) return;
+    if (isDoc && !file) {
+      setError("Please add a document to upload.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
       let created;
-      if (agentType === "doc_to_sheets" && file) {
+      if (isDoc && file) {
         const form = new FormData();
         form.append("title", title.trim());
         form.append("description", description.trim());
@@ -71,132 +121,257 @@ export function SubmitRequest() {
     }
   }
 
-  const isDoc = agentType === "doc_to_sheets";
-
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/50 p-6">
-      <h2 className="text-lg font-medium">Submit a request</h2>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div className="space-y-1">
+        <p className="text-xs font-medium uppercase tracking-wider text-sky-500/90">New request</p>
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-50">Submit a request</h2>
+        <p className="text-sm text-slate-400 leading-relaxed">
+          Choose an agent, describe what you need, and we&apos;ll run it with approval checkpoints along the way.
+        </p>
+      </div>
 
-      <label className="block space-y-1">
-        <span className="text-sm text-slate-400">Agent</span>
-        <select
-          className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
-          value={agentType}
-          onChange={(e) => setAgentType(e.target.value as AgentType)}
-        >
-          {(agents.length ? agents : [
-            { id: "workflow" as const, name: "General workflow", description: "" },
-            { id: "doc_to_sheets" as const, name: "Document → Sheets", description: "" },
-          ]).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <form onSubmit={onSubmit} className="space-y-5">
+        {/* Agent picker */}
+        <section className="oma-section space-y-3">
+          <div>
+            <h3 className="oma-label">Agent</h3>
+            <p className="oma-hint mt-0.5">What should handle this request?</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {agentOptions.map((a) => {
+              const meta = AGENT_META[a.id];
+              const selected = agentType === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setAgentType(a.id)}
+                  className={[
+                    "relative rounded-xl border p-4 text-left transition",
+                    selected
+                      ? `ring-2 ${meta.accent}`
+                      : "border-slate-800 bg-slate-950/50 hover:border-slate-600 hover:bg-slate-900/60",
+                  ].join(" ")}
+                >
+                  <span className="text-2xl" aria-hidden>
+                    {meta.icon}
+                  </span>
+                  <p className="mt-2 font-medium text-slate-100">{a.name}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    {a.description || meta.blurb}
+                  </p>
+                  {selected && (
+                    <span className="absolute right-3 top-3 text-sky-400" aria-hidden>
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-      {isDoc && (
-        <>
-          <label className="block space-y-1">
-            <span className="text-sm text-slate-400">Document (PDF, CSV, XLSX, image)</span>
+        {/* Doc-specific */}
+        {isDoc && (
+          <section className="oma-section space-y-4">
+            <div>
+              <h3 className="oma-label">Document</h3>
+              <p className="oma-hint mt-0.5">We&apos;ll extract tabular data for your review before writing to Sheets.</p>
+            </div>
+            <FileDropzone file={file} onFileChange={setFile} disabled={busy} />
+            <label className="block space-y-1.5">
+              <span className="oma-label">Google Sheet URL or ID</span>
+              <span className="oma-hint block">Optional — leave blank to use the default spreadsheet from env.</span>
+              <input
+                className="oma-input"
+                value={sheetUrl}
+                onChange={(e) => setSheetUrl(e.target.value)}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                disabled={busy}
+              />
+            </label>
+          </section>
+        )}
+
+        {/* Core fields */}
+        <section className="oma-section space-y-4">
+          <div>
+            <h3 className="oma-label">Details</h3>
+            <p className="oma-hint mt-0.5">Give the agent enough context to do the right thing.</p>
+          </div>
+
+          <label className="block space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="oma-label">Title</span>
+              <span className="oma-hint tabular-nums">{title.length}/200</span>
+            </div>
             <input
-              type="file"
-              accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
-              className="w-full text-sm text-slate-300"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="oma-input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={200}
+              placeholder={isDoc ? "Q1 expense report import" : "Automate weekly status summary"}
               required
+              disabled={busy}
             />
           </label>
-          <label className="block space-y-1">
-            <span className="text-sm text-slate-400">Google Sheet URL or ID (optional)</span>
-            <input
-              className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-            />
-          </label>
-        </>
-      )}
 
-      <label className="block space-y-1">
-        <span className="text-sm text-slate-400">Title</span>
-        <input
-          className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={200}
-          required
-        />
-      </label>
-      <label className="block space-y-1">
-        <span className="text-sm text-slate-400">{isDoc ? "Notes / extraction hints" : "Goal / description"}</span>
-        <textarea
-          className="min-h-[120px] w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-        />
-      </label>
-      <label className="flex items-center gap-2 text-sm text-slate-400">
-        <input
-          type="checkbox"
-          checked={useCustomLlm}
-          onChange={(e) => setUseCustomLlm(e.target.checked)}
-        />
-        Override default AI provider for this request
-      </label>
-      {useCustomLlm && (
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={providerId}
-            onChange={(e) => {
-              setProviderId(e.target.value);
-              const p = providers.find((x) => x.id === e.target.value);
-              if (p?.models[0]) setModelId(p.models[0].id);
-            }}
+          <label className="block space-y-1.5">
+            <span className="oma-label">{isDoc ? "Extraction notes" : "Goal & description"}</span>
+            <span className="oma-hint block">
+              {isDoc
+                ? "Column names, date formats, or what to ignore help extraction quality."
+                : "What outcome do you want? Include constraints and success criteria."}
+            </span>
+            <textarea
+              className="oma-input min-h-[140px] resize-y"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={
+                isDoc
+                  ? "e.g. Amount column is USD; skip header rows; map Date to transaction_date."
+                  : "e.g. Summarize open GitHub issues tagged bug, grouped by component, under 500 words."
+              }
+              required
+              disabled={busy}
+            />
+          </label>
+
+          <div className="space-y-2">
+            <span className="oma-label">Priority</span>
+            <div className="flex flex-wrap gap-2">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPriority(p.value)}
+                  className={[
+                    "rounded-lg border px-4 py-2 text-left text-sm transition",
+                    priority === p.value
+                      ? "border-sky-600/60 bg-sky-950/50 text-sky-100 ring-1 ring-sky-500/30"
+                      : "border-slate-700/80 bg-slate-950/50 text-slate-400 hover:border-slate-600 hover:text-slate-200",
+                  ].join(" ")}
+                >
+                  <span className="font-medium">{p.label}</span>
+                  <span className="ml-2 text-xs opacity-70">{p.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* LLM override */}
+        <section className="oma-section space-y-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setUseCustomLlm((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
           >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
+            <div>
+              <h3 className="oma-label">AI model</h3>
+              <p className="oma-hint mt-0.5">
+                {useCustomLlm
+                  ? "Using a one-off override for this request"
+                  : defaultProvider
+                    ? `Default: ${defaultProvider.name} · ${defaultModelId}`
+                    : "Using workspace default from Settings"}
+              </p>
+            </div>
+            <span
+              className={[
+                "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                useCustomLlm ? "bg-sky-900/60 text-sky-300" : "bg-slate-800 text-slate-500",
+              ].join(" ")}
+            >
+              {useCustomLlm ? "Custom" : "Default"}
+            </span>
+          </button>
+
+          {useCustomLlm && (
+            <div className="grid gap-3 border-t border-slate-800/80 pt-3 sm:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="oma-hint">Provider</span>
+                <select
+                  className="oma-input"
+                  value={providerId}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setProviderId(e.target.value);
+                    const p = providers.find((x) => x.id === e.target.value);
+                    if (p?.models[0]) setModelId(p.models[0].id);
+                  }}
+                >
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.status === "needs_config" ? " (setup required)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="oma-hint">Model</span>
+                <select
+                  className="oma-input"
+                  value={modelId}
+                  disabled={busy}
+                  onChange={(e) => setModelId(e.target.value)}
+                >
+                  {(selectedProvider?.models ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedProvider?.status === "needs_config" && (
+                <p className="oma-hint sm:col-span-2">
+                  This provider isn&apos;t connected yet.{" "}
+                  <Link to="/settings" className="text-sky-400 hover:underline">
+                    Configure in Settings
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-300"
           >
-            {(providers.find((p) => p.id === providerId)?.models ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-800/80 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <Link to="/" className="text-center text-sm text-slate-500 hover:text-slate-300 sm:text-left">
+            ← Back to requests
+          </Link>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={[
+              "inline-flex items-center justify-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold transition",
+              canSubmit
+                ? "bg-sky-600 text-white shadow-lg shadow-sky-900/30 hover:bg-sky-500"
+                : "cursor-not-allowed bg-slate-800 text-slate-500",
+            ].join(" ")}
+          >
+            {busy && (
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                aria-hidden
+              />
+            )}
+            {busy ? "Starting agent…" : isDoc ? "Upload & start extraction" : "Submit request"}
+          </button>
         </div>
-      )}
-
-      <label className="block space-y-1">
-        <span className="text-sm text-slate-400">Priority</span>
-        <select
-          className="rounded border border-slate-700 bg-slate-950 px-3 py-2"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as Priority)}
-        >
-          <option value="low">Low</option>
-          <option value="normal">Normal</option>
-          <option value="high">High</option>
-        </select>
-      </label>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded bg-sky-600 px-4 py-2 text-sm font-medium hover:bg-sky-500 disabled:opacity-50"
-      >
-        {busy ? "Submitting…" : isDoc ? "Upload & extract" : "Submit request"}
-      </button>
-    </form>
+      </form>
+    </div>
   );
 }

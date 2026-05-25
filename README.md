@@ -4,6 +4,18 @@
 
 Long-running **Google ADK** workflow agents with a custom **React** UI to submit requests, approve plans, and track status.
 
+**License:** [MIT](LICENSE) — Copyright (c) 2026 Dominik Pastoetter
+
+## Screenshots
+
+| Requests | New request |
+|----------|-------------|
+| ![Requests list](docs/screenshots/requests.png) | ![Submit request](docs/screenshots/submit.png) |
+
+| Request detail (approval) | AI providers |
+|---------------------------|--------------|
+| ![Request detail](docs/screenshots/request-detail.png) | ![Settings](docs/screenshots/settings.png) |
+
 ## Agents
 
 | Agent | What it does |
@@ -22,7 +34,7 @@ Sessions: ADK `DatabaseSessionService` (SQLite). Request metadata: separate SQLi
 
 ## AI providers
 
-Inspired by [BrowserOS](https://github.com/browseros-ai/BrowserOS), you can connect multiple LLM backends:
+Connect multiple LLM backends from the **AI providers** settings page:
 
 | Provider | Auth | Notes |
 |----------|------|--------|
@@ -84,6 +96,8 @@ make dev-backend
 | GET | `/api/requests/{id}` | Detail + `preview_rows` for doc agent |
 | POST | `/api/requests/{id}/resume` | Approve or reject |
 | GET | `/api/requests/{id}/events` | SSE progress |
+| GET | `/api/providers` | LLM provider catalog and settings |
+| GET | `/api/providers/chatgpt-oauth/status` | ChatGPT OAuth connection status |
 
 ## Tests
 
@@ -95,3 +109,7 @@ make test
 
 - [ADK Python](https://google.github.io/adk-docs/)
 - [Long-running agents with ADK](https://developers.googleblog.com/build-long-running-ai-agents-that-pause-resume-and-never-lose-context-with-adk/)
+
+## Author
+
+Dominik Pastoetter — [github.com/dpastoetter](https://github.com/dpastoetter)
