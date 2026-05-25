@@ -1,0 +1,26 @@
+.topology-flow.react-flow {
+  --xy-edge-stroke-default: var(--oma-flow-edge);
+  --xy-edge-stroke-width-default: 2;
+  --xy-edge-stroke-selected: var(--oma-primary-hover);
+  --xy-connectionline-stroke: var(--oma-muted);
+  --xy-node-background-color-default: transparent;
+  --xy-background-color-default: var(--oma-surface-elevated);
+  --xy-background-pattern-color-default: var(--oma-flow-dot);
+  --xy-minimap-background-color-default: var(--oma-surface);
+  --xy-controls-button-background-color-default: var(--oma-surface);
+  --xy-controls-button-background-color-hover-default: var(--oma-surface-elevated);
+  --xy-controls-button-color-default: var(--oma-text);
+  --xy-controls-button-border-color-default: var(--oma-border);
+}
+
+.topology-flow .react-flow__edge-path {
+  stroke: var(--oma-flow-edge);
+  stroke-width: 2;
+}
+
+.topology-flow .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--oma-surface);
+  background: var(--oma-primary);
+}

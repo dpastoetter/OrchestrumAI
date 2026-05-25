@@ -13,7 +13,7 @@ def fetch_url(url: str) -> dict[str, str]:
         return {"error": "URL must start with http:// or https://", "content": ""}
     try:
         with httpx.Client(timeout=20.0, follow_redirects=True) as client:
-            response = client.get(url, headers={"User-Agent": "OpenMiniAgents/1.0"})
+            response = client.get(url, headers={"User-Agent": "OrchestrumAI/1.0"})
             response.raise_for_status()
             text = response.text
     except Exception as exc:

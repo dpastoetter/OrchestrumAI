@@ -1,7 +1,14 @@
+import { Bot, FolderOpen, Key, Plug, Shield } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { WorkflowAgentToggles } from "../components/WorkflowAgentToggles";
+import { Alert } from "../components/ui/Alert";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { PageHeader } from "../components/ui/PageHeader";
 import { api, type ChatGPTOAuthStatus, type ProviderCatalogItem, type ProviderSettings } from "../api";
-import type { GenericWorkflowAgent } from "../types";
+import { useWorkflowPreferences } from "../context/WorkflowPreferencesContext";
+import type { AutomationSettings } from "../types";
 
 const ENV_LABELS: Record<string, string> = {
   GOOGLE_API_KEY: "Google / Gemini API key",
@@ -25,9 +32,18 @@ export function Settings() {
   const [oauthSessionId, setOauthSessionId] = useState<string | null>(null);
   const [oauthCallbackUrl, setOauthCallbackUrl] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [genericCatalog, setGenericCatalog] = useState<GenericWorkflowAgent[]>([]);
-  const [enabledGeneric, setEnabledGeneric] = useState<Set<string>>(new Set());
+  const {
+    advancedMode,
+    enabledGeneric,
+    catalog: genericCatalog,
+    setAdvancedMode,
+    setEnabledGeneric,
+    saveWorkflowPreferences,
+    loadError: workflowLoadError,
+  } = useWorkflowPreferences();
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [automation, setAutomation] = useState<AutomationSettings | null>(null);
+  const [automationBusy, setAutomationBusy] = useState(false);
 
   const providerApiError = (err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
@@ -55,14 +71,10 @@ export function Settings() {
     const oauth = await api.getChatGPTOAuthStatus();
     setChatgptOAuth(oauth);
     try {
-      const [catalogRes, wfSettings] = await Promise.all([
-        api.getWorkflowGenericAgents(),
-        api.getWorkflowSettings(),
-      ]);
-      setGenericCatalog(catalogRes.agents);
-      setEnabledGeneric(new Set(wfSettings.settings.enabled_generic_agents));
+      const auto = await api.getAutomationSettings();
+      setAutomation(auto.settings);
     } catch {
-      /* workflow API optional during partial deploy */
+      /* automation API optional during partial deploy */
     }
   }, []);
 
@@ -170,12 +182,24 @@ export function Settings() {
   }
 
   function toggleGenericAgent(id: string) {
-    setEnabledGeneric((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(enabledGeneric);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setEnabledGeneric(next);
+  }
+
+  async function onAdvancedModeChange(checked: boolean) {
+    setWorkflowBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await setAdvancedMode(checked);
+      setMessage(checked ? "Advanced mode enabled." : "Advanced mode disabled.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWorkflowBusy(false);
+    }
   }
 
   async function onSaveWorkflowAgents() {
@@ -183,8 +207,10 @@ export function Settings() {
     setError(null);
     setMessage(null);
     try {
-      await api.updateWorkflowSettings([...enabledGeneric]);
-      setMessage("Workflow agent defaults saved.");
+      await saveWorkflowPreferences({
+        enabled_generic_agents: [...enabledGeneric],
+      });
+      setMessage("Default specialists saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -206,6 +232,40 @@ export function Settings() {
     }
   }
 
+  async function onSaveAutomation(e: FormEvent) {
+    e.preventDefault();
+    if (!automation) return;
+    setAutomationBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await api.updateAutomationSettings({
+        inbox_watch_enabled: automation.inbox_watch_enabled,
+        webhook_url: automation.webhook_url,
+        markdown_export_dir: automation.markdown_export_dir,
+        desktop_notify: automation.desktop_notify,
+      });
+      setAutomation(res.settings);
+      setMessage("Automation settings saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAutomationBusy(false);
+    }
+  }
+
+  async function onScanInbox() {
+    setAutomationBusy(true);
+    try {
+      const res = await api.scanInbox();
+      setMessage(`Inbox scan complete. Created ${res.created} request(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAutomationBusy(false);
+    }
+  }
+
   async function onTest() {
     setBusy(true);
     setError(null);
@@ -221,57 +281,102 @@ export function Settings() {
   }
 
   function statusBadge(status: string) {
-    const colors: Record<string, string> = {
-      connected: "bg-emerald-900/60 text-emerald-200",
-      available: "bg-slate-700 text-slate-300",
-      needs_config: "bg-amber-900/60 text-amber-200",
-      coming_soon: "bg-slate-800 text-slate-500",
-    };
-    return (
-      <span className={`rounded px-2 py-0.5 text-xs ${colors[status] ?? colors.available}`}>
-        {status.replace("_", " ")}
-      </span>
-    );
+    const variant =
+      status === "connected"
+        ? "done"
+        : status === "needs_config"
+          ? "awaiting"
+          : "neutral";
+    return <Badge variant={variant}>{status.replace("_", " ")}</Badge>;
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">AI providers</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Connect API keys, local Ollama/LM Studio, Gemini native, or ChatGPT Plus/Pro OAuth.
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Connect API keys, local Ollama/LM Studio, Gemini native, or ChatGPT Plus/Pro OAuth."
+      />
 
-      <section className="oma-section space-y-3">
+      <Alert variant="info" title="Privacy">
+        <Shield className="inline h-4 w-4 mr-1 -mt-0.5" aria-hidden />
+        Requests, templates, schedules, and upload files are stored locally under{" "}
+        <code className="font-mono text-xs">data/</code>. During runs, your chosen LLM provider
+        receives prompts and any content the workflow needs (unless you use stub mode).
+      </Alert>
+
+      <section className="oma-section space-y-4">
         <div>
-          <h3 className="oma-label">Workflow agents (General workflow)</h3>
+          <h3 className="oma-label">Workflow preferences</h3>
           <p className="oma-hint mt-0.5">
-            Specialist sub-agents the orchestrator can delegate to during execution. Defaults apply
-            to new workflow requests; override per request on Submit.
+            Control how much agent configuration you see when submitting requests.
           </p>
         </div>
-        <WorkflowAgentToggles
-          catalog={genericCatalog}
-          enabled={enabledGeneric}
-          onToggle={toggleGenericAgent}
-          disabled={workflowBusy}
-        />
-        <button
-          type="button"
-          disabled={workflowBusy}
-          onClick={onSaveWorkflowAgents}
-          className="rounded border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+
+        <label
+          className="flex cursor-pointer items-start gap-3 rounded-lg border p-4"
+          style={{ borderColor: "var(--oma-border)", backgroundColor: "var(--oma-surface-elevated)" }}
         >
-          Save workflow agent defaults
-        </button>
+          <input
+            type="checkbox"
+            className="mt-1 rounded border-slate-600"
+            checked={advancedMode}
+            onChange={(e) => void onAdvancedModeChange(e.target.checked)}
+            disabled={workflowBusy}
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium" style={{ color: "var(--oma-text)" }}>
+              Advanced mode
+            </span>
+            <span className="oma-hint block">
+              Saves immediately. Shows the agent builder on New request and lets you edit template
+              topology on Workflows. When off, use templates or the default specialist list below.
+            </span>
+          </span>
+        </label>
+
+        {workflowLoadError && (
+          <Alert variant="error">
+            Workflow settings could not be loaded: {workflowLoadError}. Restart the backend with{" "}
+            <code className="font-mono text-xs">make dev-backend</code>.
+          </Alert>
+        )}
+
+        {!advancedMode && (
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-medium flex items-center gap-2" style={{ color: "var(--oma-text)" }}>
+                <Bot size={16} aria-hidden />
+                Default specialists
+              </h4>
+              <p className="oma-hint mt-0.5">
+                Used for new workflow requests when you are not using a saved template topology.
+              </p>
+            </div>
+            <WorkflowAgentToggles
+              catalog={genericCatalog}
+              enabled={enabledGeneric}
+              onToggle={toggleGenericAgent}
+              disabled={workflowBusy}
+            />
+          </div>
+        )}
+
+        {!advancedMode && (
+          <Button type="button" variant="secondary" disabled={workflowBusy} onClick={onSaveWorkflowAgents}>
+            Save default specialists
+          </Button>
+        )}
       </section>
 
-      <form onSubmit={onSave} className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/50 p-6">
+      <Card>
+      <form onSubmit={onSave} className="space-y-4">
         <label className="block space-y-1">
-          <span className="text-sm text-slate-400">Default provider</span>
+          <span className="oma-label flex items-center gap-2">
+            <Plug size={16} aria-hidden />
+            Default provider
+          </span>
           <select
-            className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+            className="oma-input"
             value={selectedProvider}
             onChange={(e) => {
               const id = e.target.value;
@@ -291,9 +396,9 @@ export function Settings() {
         {current && (
           <div className="flex items-center gap-2 text-sm">
             {statusBadge(current.status)}
-            <span className="text-slate-500">{current.description}</span>
+            <span className="oma-hint">{current.description}</span>
             {current.docs_url && (
-              <a className="text-sky-400 hover:underline" href={current.docs_url} target="_blank" rel="noreferrer">
+              <a className="font-medium hover:underline" style={{ color: "var(--oma-primary)" }} href={current.docs_url} target="_blank" rel="noreferrer">
                 Docs
               </a>
             )}
@@ -301,9 +406,9 @@ export function Settings() {
         )}
 
         <label className="block space-y-1">
-          <span className="text-sm text-slate-400">Model</span>
+          <span className="oma-label">Model</span>
           <select
-            className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+            className="oma-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
           >
@@ -318,23 +423,26 @@ export function Settings() {
         {current?.auth_type === "api_key" &&
           current.env_vars.map((env) => (
             <label key={env} className="block space-y-1">
-              <span className="text-sm text-slate-400">{ENV_LABELS[env] ?? env}</span>
+              <span className="oma-label flex items-center gap-2">
+                <Key size={14} aria-hidden />
+                {ENV_LABELS[env] ?? env}
+              </span>
               <input
                 type="password"
-                className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+                className="oma-input"
                 placeholder="Paste key (stored locally in data/llm_settings.json)"
                 value={apiKeys[env] ?? ""}
                 onChange={(e) => setApiKeys((k) => ({ ...k, [env]: e.target.value }))}
               />
-              <span className="text-xs text-slate-600">Or set {env} in .env</span>
+              <span className="oma-hint">Or set {env} in .env</span>
             </label>
           ))}
 
         {selectedProvider === "ollama" && (
           <label className="block space-y-1">
-            <span className="text-sm text-slate-400">Ollama host</span>
+            <span className="oma-label">Ollama host</span>
             <input
-              className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+              className="oma-input"
               value={ollamaHost}
               onChange={(e) => setOllamaHost(e.target.value)}
             />
@@ -343,9 +451,9 @@ export function Settings() {
 
         {selectedProvider === "lmstudio" && (
           <label className="block space-y-1">
-            <span className="text-sm text-slate-400">LM Studio base URL</span>
+            <span className="oma-label">LM Studio base URL</span>
             <input
-              className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+              className="oma-input"
               value={lmStudioUrl}
               onChange={(e) => setLmStudioUrl(e.target.value)}
             />
@@ -353,57 +461,51 @@ export function Settings() {
         )}
 
         {selectedProvider === "chatgpt_oauth" && (
-          <div className="space-y-3 rounded border border-slate-700 bg-slate-950/80 p-4">
-            <p className="text-sm text-slate-300">
+          <div
+            className="space-y-3 rounded-lg border p-4"
+            style={{ borderColor: "var(--oma-border)", backgroundColor: "var(--oma-surface-elevated)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--oma-text)" }}>
               Sign in with your ChatGPT Plus or Pro subscription (Codex OAuth). Opens auth in a new tab;
               localhost callback on port 1455 or 1457.
             </p>
             {chatgptOAuth?.connected ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-emerald-400">Connected</span>
+                <Badge variant="done">Connected</Badge>
                 {chatgptOAuth.account?.account_id && (
                   <span className="text-xs text-slate-500 font-mono">
                     {chatgptOAuth.account.account_id}
                   </span>
                 )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onDisconnectChatGPT}
-                  className="rounded border border-slate-600 px-3 py-1 text-sm hover:bg-slate-800"
-                >
+                <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onDisconnectChatGPT}>
                   Disconnect
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onConnectChatGPT}
-                  className="rounded bg-emerald-700 px-4 py-2 text-sm hover:bg-emerald-600 disabled:opacity-50"
-                >
+                <Button type="button" variant="primary" disabled={busy} onClick={onConnectChatGPT}>
                   Connect ChatGPT
-                </button>
+                </Button>
                 {oauthSessionId && (
                   <div className="space-y-2">
-                    <p className="text-xs text-slate-500">
+                    <p className="oma-hint">
                       If redirect fails, paste the full callback URL from your browser:
                     </p>
                     <input
-                      className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-mono"
+                      className="oma-input font-mono text-xs"
                       placeholder="http://127.0.0.1:1455/auth/callback?code=..."
                       value={oauthCallbackUrl}
                       onChange={(e) => setOauthCallbackUrl(e.target.value)}
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       disabled={busy || !oauthCallbackUrl.trim()}
                       onClick={onPasteCallback}
-                      className="rounded border border-slate-600 px-3 py-1 text-sm hover:bg-slate-800"
                     >
                       Submit callback URL
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -412,34 +514,102 @@ export function Settings() {
         )}
 
         <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded bg-sky-600 px-4 py-2 text-sm hover:bg-sky-500 disabled:opacity-50"
-          >
+          <Button type="submit" variant="primary" disabled={busy}>
             Save default
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
             disabled={
               busy ||
               current?.status === "coming_soon" ||
               (selectedProvider === "chatgpt_oauth" && !chatgptOAuth?.connected)
             }
             onClick={onTest}
-            className="rounded border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
           >
             Test connection
-          </button>
+          </Button>
         </div>
-        {message && <p className="text-sm text-emerald-400">{message}</p>}
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {message && <Alert variant="success">{message}</Alert>}
+        {error && <Alert variant="error">{error}</Alert>}
       </form>
+      </Card>
 
       {settings && (
-        <p className="text-xs text-slate-600">
+        <p className="oma-hint">
           Active default: {settings.default_provider_id} / {settings.default_model_id}
         </p>
+      )}
+
+      {automation && (
+        <section className="oma-section space-y-4">
+          <div>
+            <h3 className="oma-label flex items-center gap-2">
+              <FolderOpen size={16} aria-hidden />
+              Automation
+            </h3>
+            <p className="oma-hint mt-0.5">
+              Inbox folder, webhooks, markdown export, and desktop notifications (Linux notify-send).
+            </p>
+          </div>
+          <form onSubmit={onSaveAutomation} className="space-y-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={automation.inbox_watch_enabled}
+                onChange={(e) =>
+                  setAutomation({ ...automation, inbox_watch_enabled: e.target.checked })
+                }
+                disabled={automationBusy}
+              />
+              Watch <code className="text-xs">{automation.inbox_dir}</code> for new files
+            </label>
+            <label className="block space-y-1">
+              <span className="oma-label">Webhook URL (on done/failed)</span>
+              <input
+                className="oma-input"
+                value={automation.webhook_url}
+                onChange={(e) =>
+                  setAutomation({ ...automation, webhook_url: e.target.value })
+                }
+                placeholder="https://..."
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="oma-label">Markdown export directory (Obsidian vault, etc.)</span>
+              <input
+                className="oma-input"
+                value={automation.markdown_export_dir}
+                onChange={(e) =>
+                  setAutomation({ ...automation, markdown_export_dir: e.target.value })
+                }
+                placeholder="/home/you/Documents/OMA"
+              />
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={automation.desktop_notify}
+                onChange={(e) =>
+                  setAutomation({ ...automation, desktop_notify: e.target.checked })
+                }
+                disabled={automationBusy}
+              />
+              Desktop notifications (notify-send)
+            </label>
+            <p className="oma-hint text-xs">
+              Data: {automation.data_dir} · Uploads: {automation.uploads_dir}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" variant="secondary" disabled={automationBusy}>
+                Save automation
+              </Button>
+              <Button type="button" variant="ghost" disabled={automationBusy} onClick={onScanInbox}>
+                Scan inbox now
+              </Button>
+            </div>
+          </form>
+        </section>
       )}
     </div>
   );

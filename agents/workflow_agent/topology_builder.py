@@ -10,8 +10,7 @@ from google.adk.agents.sequential_agent import SequentialAgent
 from google.adk.tools.agent_tool import AgentTool
 
 from .instructions import BASE_INSTRUCTION
-from .generic_agents.catalog import _CATALOG_BY_ID
-from .generic_agents.tools import fetch_url_tool
+from .generic_agents.catalog import _CATALOG_BY_ID, tool_name_for
 from .tools import WORKFLOW_TOOLS
 from .topology import AgentTopology, TopologyNode
 
@@ -79,13 +78,7 @@ def _orchestrator_instruction_section(topology: AgentTopology) -> str:
         if n.kind == "catalog":
             defn = _CATALOG_BY_ID.get(n.catalog_id or "")
             desc = defn.description if defn else ""
-            tool_name = f"{n.catalog_id}_agent" if n.catalog_id else "delegate"
-            if n.catalog_id == "research":
-                tool_name = "research_agent"
-            elif n.catalog_id == "writer":
-                tool_name = "writer_agent"
-            elif n.catalog_id == "editor":
-                tool_name = "editor_agent"
+            tool_name = tool_name_for(n.catalog_id or "")
             lines.append(f"- {label} (tool `{tool_name}`): {desc}")
         else:
             slug = _slug(n.name)
@@ -104,10 +97,11 @@ def _node_label(node: TopologyNode) -> str:
     return node.name.strip() or "Custom"
 
 
-def _simple_extra_tools(node: TopologyNode) -> list[Any]:
-    if node.kind == "catalog" and node.catalog_id == "research":
-        return [fetch_url_tool]
-    return []
+def _simple_extra_tools(node: TopologyNode, model: Any) -> list[Any]:
+    if node.kind != "catalog" or not node.catalog_id:
+        return []
+    built = build_node_agent(model, node)
+    return list(built.tools or [])
 
 
 def build_agent_from_topology(model: Any, topology: AgentTopology) -> LlmAgent:
@@ -121,7 +115,7 @@ def build_agent_from_topology(model: Any, topology: AgentTopology) -> LlmAgent:
             description="Single-agent workflow with plan, approval, and execution.",
             instruction=instruction,
             model=model,
-            tools=[*WORKFLOW_TOOLS, *_simple_extra_tools(node)],
+            tools=[*WORKFLOW_TOOLS, *_simple_extra_tools(node, model)],
         )
 
     if topology.type == "sequential":

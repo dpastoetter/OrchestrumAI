@@ -39,11 +39,14 @@ export function CustomAgentDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-4 rounded-lg border border-slate-700 bg-slate-900 p-6 shadow-xl"
+        className="w-full max-w-md space-y-4 rounded-xl border p-6 shadow-xl"
+        style={{ borderColor: "var(--oma-border)", backgroundColor: "var(--oma-surface)" }}
       >
-        <h3 className="text-lg font-medium text-slate-100">{title}</h3>
+        <h3 className="text-lg font-medium" style={{ color: "var(--oma-text)" }}>
+          {title}
+        </h3>
         <label className="block space-y-1">
-          <span className="text-sm text-slate-400">Name</span>
+          <span className="oma-label">Name</span>
           <input
             className="oma-input w-full"
             value={name}
@@ -53,7 +56,7 @@ export function CustomAgentDialog({
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-sm text-slate-400">Instruction</span>
+          <span className="oma-label">Instruction</span>
           <textarea
             className="oma-input min-h-[120px] w-full"
             value={instruction}
@@ -63,17 +66,10 @@ export function CustomAgentDialog({
           />
         </label>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded border border-slate-600 px-3 py-1.5 text-sm hover:bg-slate-800"
-          >
+          <button type="button" onClick={onCancel} className="oma-btn-secondary !py-1.5">
             Cancel
           </button>
-          <button
-            type="submit"
-            className="rounded bg-sky-600 px-3 py-1.5 text-sm hover:bg-sky-500"
-          >
+          <button type="submit" className="oma-btn-primary !py-1.5">
             Save
           </button>
         </div>

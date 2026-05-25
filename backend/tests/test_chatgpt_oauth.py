@@ -8,12 +8,12 @@ from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ["OPENMINIAGENTS_STUB_RUN"] = "1"
-os.environ["OPENMINIAGENTS_DATA_DIR"] = "/tmp/openminiagents-chatgpt-oauth-test"
+os.environ["ORCHESTRUMAI_STUB_RUN"] = "1"
+os.environ["ORCHESTRUMAI_DATA_DIR"] = "/tmp/orchestrumai-chatgpt-oauth-test"
 
-from openminiagents.app import create_app
-from openminiagents.chatgpt_oauth import delete_tokens, is_connected, start_connect
-from openminiagents.llm_providers import build_adk_model, provider_connection_status, get_provider
+from orchestrumai.app import create_app
+from orchestrumai.chatgpt_oauth import delete_tokens, is_connected, start_connect
+from orchestrumai.llm_providers import build_adk_model, provider_connection_status, get_provider
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def test_build_chatgpt_oauth_raises_when_not_connected():
         build_adk_model("chatgpt_oauth", "gpt-5.2")
 
 
-@patch("openminiagents.chatgpt_oauth._start_callback_server", return_value=1455)
+@patch("orchestrumai.chatgpt_oauth._start_callback_server", return_value=1455)
 @patch("oauth_codex.auth.discover_endpoints")
 @patch("oauth_codex.auth.build_authorize_url", return_value="https://auth.example/authorize")
 @patch("oauth_codex.auth.generate_pkce_pair", return_value=("verifier", "challenge"))
@@ -81,7 +81,7 @@ async def test_oauth_status_endpoint(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
-@patch("openminiagents.chatgpt_oauth._start_callback_server", return_value=1455)
+@patch("orchestrumai.chatgpt_oauth._start_callback_server", return_value=1455)
 @patch("oauth_codex.auth.discover_endpoints")
 @patch("oauth_codex.auth.build_authorize_url", return_value="https://auth.example/authorize")
 @patch("oauth_codex.auth.generate_pkce_pair", return_value=("verifier", "challenge"))
@@ -127,13 +127,13 @@ def test_complete_callback_saves_tokens(
     mock_discover.return_value = cfg
     mock_exchange.return_value = OAuthTokens(access_token="tok", refresh_token="ref")
 
-    with patch("openminiagents.chatgpt_oauth._start_callback_server", return_value=1455):
+    with patch("orchestrumai.chatgpt_oauth._start_callback_server", return_value=1455):
         with patch("oauth_codex.auth.generate_state", return_value="state123"):
             with patch("oauth_codex.auth.generate_pkce_pair", return_value=("v", "c")):
                 with patch("oauth_codex.auth.build_authorize_url", return_value="https://x"):
                     result = start_connect()
 
-    from openminiagents.chatgpt_oauth import complete_with_callback_url
+    from orchestrumai.chatgpt_oauth import complete_with_callback_url
 
     complete_with_callback_url(
         result.session_id,
@@ -145,7 +145,7 @@ def test_complete_callback_saves_tokens(
 @pytest.mark.anyio
 async def test_build_with_saved_tokens(client: AsyncClient) -> None:
     from oauth_codex.core_types import OAuthTokens
-    from openminiagents.chatgpt_oauth import save_tokens
+    from orchestrumai.chatgpt_oauth import save_tokens
 
     save_tokens(
         OAuthTokens(
@@ -155,7 +155,7 @@ async def test_build_with_saved_tokens(client: AsyncClient) -> None:
         )
     )
     resolved = build_adk_model("chatgpt_oauth", "gpt-5.2")
-    from openminiagents.codex_adk_llm import CodexAdkLlm
+    from orchestrumai.codex_adk_llm import CodexAdkLlm
 
     assert isinstance(resolved.adk_model, CodexAdkLlm)
     assert resolved.model_id == "gpt-5.2"

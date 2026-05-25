@@ -1,23 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Background,
-  Controls,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type OnConnect,
-  useEdgesState,
-  useNodesState,
-  type NodeTypes,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
+import { PaletteCategoryIcons, TopologyModeIcons } from "../../lib/icons";
 import type { GenericWorkflowAgent } from "../../types";
-import { AgentFlowNode, type AgentFlowNodeData } from "./AgentFlowNode";
+import { type AgentFlowNodeData } from "./AgentFlowNode";
 import { CustomAgentDialog } from "./CustomAgentDialog";
+import { TopologyFlowCanvas } from "./TopologyFlowCanvas";
 import {
   type AgentTopology,
-  COORDINATOR_NODE_ID,
   catalogNode,
   chainEdges,
   customNode,
@@ -27,34 +17,26 @@ import {
   type TopologyType,
 } from "./topologyTypes";
 
-const MODE_META: Record<
-  TopologyType,
-  { title: string; blurb: string; icon: string }
-> = {
+const PALETTE_GROUPS: { category: "private_doc" | "writing" | "web"; label: string }[] = [
+  { category: "private_doc", label: "Private documents" },
+  { category: "writing", label: "Writing" },
+  { category: "web", label: "Web research" },
+];
+
+const MODE_META: Record<TopologyType, { title: string; blurb: string }> = {
   simple: {
     title: "Simple",
     blurb: "One agent handles planning and execution.",
-    icon: "●",
   },
   sequential: {
     title: "Sequential",
     blurb: "Agents run in order: A → B → C.",
-    icon: "→",
   },
   orchestrator: {
     title: "Orchestrator",
     blurb: "Coordinator delegates to specialists.",
-    icon: "◎",
   },
 };
-
-const nodeTypes: NodeTypes = { agentNode: AgentFlowNode };
-
-function layoutX(index: number, total: number, base = 80): number {
-  if (total <= 1) return 200;
-  const span = 220;
-  return base + (index * span) / Math.max(total - 1, 1);
-}
 
 interface AgentTopologyBuilderProps {
   catalog: GenericWorkflowAgent[];
@@ -74,85 +56,6 @@ export function AgentTopologyBuilder({
     replaceId?: string;
     editNode?: TopologyNode;
   } | null>(null);
-
-  const syncFromTopology = useCallback(
-    (topology: AgentTopology): { nodes: Node[]; edges: Edge[] } => {
-      const flowNodes: Node[] = [];
-      const flowEdges: Edge[] = [];
-
-      if (topology.type === "orchestrator") {
-        flowNodes.push({
-          id: COORDINATOR_NODE_ID,
-          type: "agentNode",
-          position: { x: 200, y: 40 },
-          data: {
-            label: "Coordinator",
-            node: { id: COORDINATOR_NODE_ID, kind: "catalog" },
-            isCoordinator: true,
-          } satisfies AgentFlowNodeData,
-          draggable: false,
-          selectable: false,
-        });
-        topology.nodes.forEach((n, i) => {
-          const cols = 3;
-          const row = Math.floor(i / cols);
-          const col = i % cols;
-          flowNodes.push({
-            id: n.id,
-            type: "agentNode",
-            position: { x: 60 + col * 200, y: 160 + row * 100 },
-            data: makeNodeData(n, topology, catalog, disabled, onChange, setPendingCustom),
-          });
-          flowEdges.push({
-            id: `e-${COORDINATOR_NODE_ID}-${n.id}`,
-            source: COORDINATOR_NODE_ID,
-            target: n.id,
-            animated: true,
-          });
-        });
-        return { nodes: flowNodes, edges: flowEdges };
-      }
-
-      topology.nodes.forEach((n, i) => {
-        flowNodes.push({
-          id: n.id,
-          type: "agentNode",
-          position: {
-            x: layoutX(i, topology.nodes.length),
-            y: topology.type === "sequential" ? 80 : 120,
-          },
-          data: makeNodeData(n, topology, catalog, disabled, onChange, setPendingCustom),
-        });
-      });
-
-      const edges =
-        topology.type === "sequential"
-          ? chainEdges(topology.nodes).map((e) => ({
-              id: `e-${e.from}-${e.to}`,
-              source: e.from,
-              target: e.to,
-              animated: true,
-            }))
-          : [];
-
-      return { nodes: flowNodes, edges };
-    },
-    [catalog, disabled, onChange],
-  );
-
-  const initial = useMemo(() => syncFromTopology(value), [value, syncFromTopology]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
-
-  useEffect(() => {
-    const next = syncFromTopology(value);
-    setNodes(next.nodes);
-    setEdges(next.edges);
-  }, [value.type, value.nodes, syncFromTopology, setNodes, setEdges]);
-
-  useEffect(() => {
-    if (pendingCustom?.editNode) setCustomOpen(true);
-  }, [pendingCustom]);
 
   const setTopology = useCallback(
     (next: AgentTopology) => {
@@ -181,7 +84,7 @@ export function AgentTopologyBuilder({
     setTopology({ type: "orchestrator", nodes: [...value.nodes, n], edges: [] });
   };
 
-  const onConnect: OnConnect = (connection) => {
+  const onConnect = (connection: { source?: string | null; target?: string | null }) => {
     if (disabled || value.type !== "sequential") return;
     if (!connection.source || !connection.target) return;
     const newEdge = { from: connection.source, to: connection.target };
@@ -192,25 +95,12 @@ export function AgentTopologyBuilder({
     });
   };
 
-  const onNodeDragStop = useCallback(() => {
-    if (disabled || value.type !== "sequential") return;
-    const agentNodes = nodes
-      .filter((n) => n.id !== COORDINATOR_NODE_ID)
-      .sort((a, b) => a.position.x - b.position.x);
-    const ordered = agentNodes
-      .map((fn) => value.nodes.find((n) => n.id === fn.id))
-      .filter((n): n is TopologyNode => n !== undefined);
-    if (ordered.length === value.nodes.length) {
-      setTopology({ type: "sequential", nodes: ordered, edges: chainEdges(ordered) });
-    }
-  }, [disabled, nodes, value.nodes, setTopology]);
+  const onSequentialReorder = (ordered: TopologyNode[]) => {
+    setTopology({ type: "sequential", nodes: ordered, edges: chainEdges(ordered) });
+  };
 
-  const onNodesDelete = useCallback(() => {
-    if (disabled) return;
-    const deleted = new Set(
-      nodes.filter((n) => n.selected && n.id !== COORDINATOR_NODE_ID).map((n) => n.id),
-    );
-    if (!deleted.size) return;
+  const onRemoveNodes = (ids: string[]) => {
+    const deleted = new Set(ids);
     const remaining = value.nodes.filter((n) => !deleted.has(n.id));
     if (value.type === "simple") return;
     if (value.type === "sequential") {
@@ -218,7 +108,41 @@ export function AgentTopologyBuilder({
     } else {
       setTopology({ type: "orchestrator", nodes: remaining, edges: [] });
     }
-  }, [disabled, nodes, value, setTopology]);
+  };
+
+  useEffect(() => {
+    if (pendingCustom?.editNode) setCustomOpen(true);
+  }, [pendingCustom]);
+
+  const makeNodeData = useCallback(
+    (n: TopologyNode, topology: AgentTopology): AgentFlowNodeData => {
+      const catalogEntry =
+        n.kind === "catalog" ? catalog.find((a) => a.id === n.catalog_id) : undefined;
+      const remove = () => {
+        if (disabled) return;
+        const remaining = topology.nodes.filter((x) => x.id !== n.id);
+        if (topology.type === "simple") return;
+        if (topology.type === "sequential") {
+          onChange({ type: "sequential", nodes: remaining, edges: chainEdges(remaining) });
+        } else {
+          onChange({ type: "orchestrator", nodes: remaining, edges: [] });
+        }
+      };
+      return {
+        label: nodeLabel(n, catalog),
+        node: n,
+        category: catalogEntry?.category,
+        onRemove: topology.type !== "simple" ? remove : undefined,
+        onEdit:
+          n.kind === "custom"
+            ? () => {
+                setPendingCustom({ editNode: n });
+              }
+            : undefined,
+      };
+    },
+    [catalog, disabled, onChange],
+  );
 
   return (
     <section className="oma-section space-y-4">
@@ -234,78 +158,104 @@ export function AgentTopologyBuilder({
         {(Object.keys(MODE_META) as TopologyType[]).map((mode) => {
           const meta = MODE_META[mode];
           const selected = value.type === mode;
+          const ModeIcon = TopologyModeIcons[mode];
           return (
             <button
               key={mode}
               type="button"
               disabled={disabled}
               onClick={() => setMode(mode)}
-              className={[
-                "rounded-lg border p-3 text-left transition",
-                selected
-                  ? "border-sky-600/50 bg-sky-950/40 ring-2 ring-sky-500/40"
-                  : "border-slate-800 bg-slate-950/50 hover:border-slate-600",
-                disabled ? "opacity-50" : "",
-              ].join(" ")}
+              className={["rounded-lg border p-3 text-left transition", disabled ? "opacity-50" : ""].join(
+                " ",
+              )}
+              style={{
+                borderColor: selected ? "var(--oma-primary)" : "var(--oma-border)",
+                backgroundColor: selected
+                  ? "color-mix(in srgb, var(--oma-primary) 8%, var(--oma-surface))"
+                  : "var(--oma-surface-elevated)",
+                boxShadow: selected ? "0 0 0 2px color-mix(in srgb, var(--oma-primary) 25%, transparent)" : undefined,
+              }}
             >
-              <span className="text-lg" aria-hidden>
-                {meta.icon}
-              </span>
-              <p className="mt-1 text-sm font-medium text-slate-100">{meta.title}</p>
-              <p className="text-xs text-slate-500">{meta.blurb}</p>
+              <ModeIcon size={22} style={{ color: "var(--oma-primary)" }} aria-hidden />
+              <p className="mt-2 text-sm font-medium" style={{ color: "var(--oma-text)" }}>
+                {meta.title}
+              </p>
+              <p className="oma-hint">{meta.blurb}</p>
             </button>
           );
         })}
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-        <span className="w-full text-xs font-medium uppercase tracking-wide text-slate-500">
+      <div
+        className="space-y-3 rounded-lg border p-3"
+        style={{ borderColor: "var(--oma-border)", backgroundColor: "var(--oma-surface-elevated)" }}
+      >
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--oma-muted)" }}>
           Palette
         </span>
-        {catalog.map((a) => (
+        {PALETTE_GROUPS.map((group) => {
+          const items = catalog.filter(
+            (a) => (a.category ?? "writing") === group.category,
+          );
+          if (items.length === 0) return null;
+          const CatIcon = PaletteCategoryIcons[group.category];
+          return (
+            <div key={group.category} className="space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs" style={{ color: "var(--oma-muted)" }}>
+                <CatIcon size={14} aria-hidden />
+                {group.label}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {items.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => addCatalog(a.id)}
+                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition hover:opacity-90"
+                    style={{ borderColor: "var(--oma-border)", color: "var(--oma-text)" }}
+                    title={a.description}
+                  >
+                    <Plus size={12} aria-hidden />
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        <div className="space-y-1.5">
+          <span className="text-xs" style={{ color: "var(--oma-muted)" }}>
+            Custom
+          </span>
           <button
-            key={a.id}
             type="button"
             disabled={disabled}
-            onClick={() => addCatalog(a.id)}
-            className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:border-sky-600 hover:bg-slate-900"
-            title={a.description}
+            onClick={() => {
+              setPendingCustom(null);
+              setCustomOpen(true);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-dashed px-2 py-1 text-xs transition"
+            style={{ borderColor: "var(--oma-muted)", color: "var(--oma-muted)" }}
           >
-            + {a.name}
+            <Plus size={12} aria-hidden />
+            Custom agent
           </button>
-        ))}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => {
-            setPendingCustom(null);
-            setCustomOpen(true);
-          }}
-          className="rounded border border-dashed border-slate-600 px-2 py-1 text-xs text-slate-400 hover:border-sky-600"
-        >
-          + Custom agent
-        </button>
+        </div>
       </div>
 
-      <div className="h-[280px] rounded-lg border border-slate-800 bg-slate-950/80">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+      <div
+        className="h-[380px] overflow-hidden rounded-xl border"
+        style={{ borderColor: "var(--oma-border)", backgroundColor: "var(--oma-surface-elevated)" }}
+      >
+        <TopologyFlowCanvas
+          topology={value}
+          disabled={disabled}
+          makeNodeData={makeNodeData}
           onConnect={onConnect}
-          onNodesDelete={onNodesDelete}
-          onNodeDragStop={onNodeDragStop}
-          nodeTypes={nodeTypes}
-          nodesDraggable={!disabled && value.type !== "simple"}
-          nodesConnectable={!disabled && value.type === "sequential"}
-          elementsSelectable={!disabled}
-          fitView
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={16} color="#334155" />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+          onSequentialReorder={onSequentialReorder}
+          onRemoveNodes={onRemoveNodes}
+        />
       </div>
 
       <CustomAgentDialog
@@ -342,35 +292,4 @@ export function AgentTopologyBuilder({
       />
     </section>
   );
-}
-
-function makeNodeData(
-  n: TopologyNode,
-  topology: AgentTopology,
-  catalog: GenericWorkflowAgent[],
-  disabled: boolean | undefined,
-  onChange: (t: AgentTopology) => void,
-  setPendingCustom: (v: { editNode?: TopologyNode } | null) => void,
-): AgentFlowNodeData {
-  const remove = () => {
-    if (disabled) return;
-    const remaining = topology.nodes.filter((x) => x.id !== n.id);
-    if (topology.type === "simple") return;
-    if (topology.type === "sequential") {
-      onChange({ type: "sequential", nodes: remaining, edges: chainEdges(remaining) });
-    } else {
-      onChange({ type: "orchestrator", nodes: remaining, edges: [] });
-    }
-  };
-  return {
-    label: nodeLabel(n, catalog),
-    node: n,
-    onRemove: topology.type !== "simple" ? remove : undefined,
-    onEdit:
-      n.kind === "custom"
-        ? () => {
-            setPendingCustom({ editNode: n });
-          }
-        : undefined,
-  };
 }

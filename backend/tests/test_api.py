@@ -9,10 +9,10 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ["OPENMINIAGENTS_STUB_RUN"] = "1"
-os.environ["OPENMINIAGENTS_DATA_DIR"] = "/tmp/openminiagents-test-data"
+os.environ["ORCHESTRUMAI_STUB_RUN"] = "1"
+os.environ["ORCHESTRUMAI_DATA_DIR"] = "/tmp/orchestrumai-test-data"
 
-from openminiagents.app import create_app
+from orchestrumai.app import create_app
 
 
 @pytest.fixture
@@ -79,3 +79,27 @@ async def test_list_requests(client: AsyncClient) -> None:
     r = await client.get("/api/requests")
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+
+
+@pytest.mark.anyio
+async def test_delete_request(client: AsyncClient) -> None:
+    create = await client.post(
+        "/api/requests",
+        json={
+            "title": "To delete",
+            "description": "Remove me",
+            "priority": "normal",
+            "agent_type": "workflow",
+        },
+    )
+    assert create.status_code == 202
+    req_id = create.json()["id"]
+
+    deleted = await client.delete(f"/api/requests/{req_id}")
+    assert deleted.status_code == 204
+
+    gone = await client.get(f"/api/requests/{req_id}")
+    assert gone.status_code == 404
+
+    listed = await client.get("/api/requests")
+    assert all(r["id"] != req_id for r in listed.json())

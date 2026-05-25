@@ -2,26 +2,117 @@
 @tailwind components;
 @tailwind utilities;
 
+:root,
+.light {
+  --oma-bg: #f8fafc;
+  --oma-surface: #ffffff;
+  --oma-surface-elevated: #f1f5f9;
+  --oma-border: #e2e8f0;
+  --oma-text: #0f172a;
+  --oma-muted: #64748b;
+  --oma-primary: #2563eb;
+  --oma-primary-hover: #1d4ed8;
+  --oma-danger: #dc2626;
+  --oma-success: #059669;
+  --oma-warning: #d97706;
+  --oma-flow-edge: #2563eb;
+  --oma-flow-dot: #cbd5e1;
+}
+
+.dark {
+  --oma-bg: #09090b;
+  --oma-surface: #18181b;
+  --oma-surface-elevated: #27272a;
+  --oma-border: #3f3f46;
+  --oma-text: #fafafa;
+  --oma-muted: #a1a1aa;
+  --oma-primary: #3b82f6;
+  --oma-primary-hover: #60a5fa;
+  --oma-danger: #f87171;
+  --oma-success: #34d399;
+  --oma-warning: #fbbf24;
+  --oma-flow-edge: #3b82f6;
+  --oma-flow-dot: #52525b;
+}
+
 body {
-  @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
-  background-image:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgb(14 116 144 / 0.15), transparent),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgb(99 102 241 / 0.08), transparent);
+  @apply min-h-screen font-sans antialiased;
+  background-color: var(--oma-bg);
+  color: var(--oma-text);
 }
 
 @layer components {
   .oma-input {
-    @apply w-full rounded-lg border border-slate-700/80 bg-slate-950/80 px-3.5 py-2.5 text-sm text-slate-100 shadow-inner shadow-black/20
-      placeholder:text-slate-600 transition
-      focus:border-sky-600/60 focus:outline-none focus:ring-2 focus:ring-sky-600/25;
+    @apply w-full rounded-lg border px-3.5 py-2.5 text-sm shadow-sm transition;
+    border-color: var(--oma-border);
+    background-color: var(--oma-surface);
+    color: var(--oma-text);
   }
+  .oma-input::placeholder {
+    color: var(--oma-muted);
+  }
+  .oma-input:focus {
+    outline: none;
+    border-color: var(--oma-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--oma-primary) 25%, transparent);
+  }
+
   .oma-label {
-    @apply text-sm font-medium text-slate-300;
+    @apply text-sm font-medium;
+    color: var(--oma-text);
   }
+
   .oma-hint {
-    @apply text-xs text-slate-500;
+    @apply text-xs;
+    color: var(--oma-muted);
   }
+
   .oma-section {
-    @apply rounded-xl border border-slate-800/80 bg-slate-900/40 p-5 backdrop-blur-sm;
+    @apply rounded-xl border p-5;
+    border-color: var(--oma-border);
+    background-color: var(--oma-surface);
+  }
+
+  .oma-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-white transition;
+    background-color: var(--oma-primary);
+  }
+  .oma-btn-primary:hover:not(:disabled) {
+    background-color: var(--oma-primary-hover);
+  }
+  .oma-btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .oma-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition;
+    border-color: var(--oma-border);
+    background-color: var(--oma-surface);
+    color: var(--oma-text);
+  }
+  .oma-btn-secondary:hover:not(:disabled) {
+    background-color: var(--oma-surface-elevated);
+  }
+  .oma-btn-secondary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .oma-btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition;
+    border-color: color-mix(in srgb, var(--oma-danger) 40%, var(--oma-border));
+    color: var(--oma-danger);
+    background-color: var(--oma-surface);
+  }
+  .oma-btn-danger:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--oma-danger) 12%, var(--oma-surface));
+  }
+
+  .oma-nav-link {
+    color: var(--oma-muted);
+  }
+
+  .oma-nav-active {
+    color: var(--oma-primary);
+    background-color: color-mix(in srgb, var(--oma-primary) 12%, var(--oma-surface));
   }
 }

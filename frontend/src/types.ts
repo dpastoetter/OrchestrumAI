@@ -26,6 +26,9 @@ export interface RequestSummary {
   enabled_generic_agents?: string[];
   agent_topology_type?: string;
   agent_topology_labels?: string[];
+  workflow_template_id?: string;
+  workflow_schedule_id?: string;
+  run_source?: string;
   created_at: string;
   updated_at: string;
 }
@@ -79,13 +82,84 @@ export interface CreateRequestBody {
   agent_topology?: AgentTopology;
 }
 
+export type AgentCatalogCategory = "private_doc" | "writing" | "web";
+
 export interface GenericWorkflowAgent {
   id: string;
   name: string;
   description: string;
   default_enabled: boolean;
+  category?: AgentCatalogCategory;
 }
 
 export interface WorkflowSettings {
   enabled_generic_agents: string[];
+  advanced_mode: boolean;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description_template: string;
+  agent_type: AgentType;
+  agent_topology: AgentTopology | null;
+  default_priority: Priority;
+  provider_id?: string;
+  model_id?: string;
+  require_plan_approval: boolean;
+  icon: string;
+  category: string;
+  bundled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowTemplateBody {
+  name: string;
+  description_template: string;
+  agent_type: AgentType;
+  agent_topology?: AgentTopology;
+  default_priority?: Priority;
+  provider_id?: string;
+  model_id?: string;
+  require_plan_approval?: boolean;
+  icon?: string;
+  category?: string;
+}
+
+export interface WorkflowSchedule {
+  id: string;
+  user_id: string;
+  template_id: string;
+  template_name: string;
+  cron_expression: string;
+  timezone: string;
+  enabled: boolean;
+  description_vars: Record<string, string>;
+  on_approval: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  last_request_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationSettings {
+  inbox_watch_enabled: boolean;
+  webhook_url: string;
+  markdown_export_dir: string;
+  desktop_notify: boolean;
+  inbox_dir: string;
+  uploads_dir: string;
+  data_dir: string;
+}
+
+export interface WorkflowScheduleBody {
+  template_id: string;
+  cron_expression: string;
+  timezone?: string;
+  enabled?: boolean;
+  description_vars?: Record<string, string>;
+  on_approval?: "pause" | "skip_plan";
 }

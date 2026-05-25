@@ -31,8 +31,8 @@ def parse_document(tool_context: ToolContext) -> dict[str, object]:
     if not file_path:
         return {"error": "No file_path in session state"}
 
-    from openminiagents.config import STUB_RUN
-    from openminiagents.document_parser import default_column_mapping, extract_table
+    from orchestrumai.config import STUB_RUN
+    from orchestrumai.document_parser import default_column_mapping, extract_table
 
     description = str(tool_context.state.get("request_description", ""))
     mime_type = str(tool_context.state.get("file_mime_type", ""))
@@ -98,8 +98,8 @@ def request_human_approval(
 
 def append_rows_to_sheet(tool_context: ToolContext) -> dict[str, object]:
     """Append approved rows to the target Google Sheet."""
-    from openminiagents.config import DEFAULT_SPREADSHEET_ID, STUB_RUN
-    from openminiagents.sheets_client import append_rows, parse_spreadsheet_id
+    from orchestrumai.config import DEFAULT_SPREADSHEET_ID, STUB_RUN
+    from orchestrumai.sheets_client import append_rows, parse_spreadsheet_id
 
     rows = json.loads(str(tool_context.state.get("preview_rows_json", "[]")))
     columns = json.loads(str(tool_context.state.get("columns_json", "[]")))

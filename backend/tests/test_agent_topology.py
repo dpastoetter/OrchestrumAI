@@ -8,7 +8,7 @@ import pytest
 from google.adk.tools.agent_tool import AgentTool
 from httpx import ASGITransport, AsyncClient
 
-from openminiagents.app import create_app
+from orchestrumai.app import create_app
 from workflow_agent.topology import AgentTopology, TopologyNode
 from workflow_agent.topology_builder import build_agent_from_topology
 
@@ -122,7 +122,7 @@ async def test_create_request_stores_topology(client: AsyncClient):
 
 @pytest.mark.anyio
 async def test_runner_keys_differ_by_topology():
-    from openminiagents.runner_bridge import RunnerBridge
+    from orchestrumai.runner_bridge import RunnerBridge
 
     bridge = RunnerBridge()
     k1 = bridge._runner_key("workflow", None, None, agent_topology=_orchestrator_topology())

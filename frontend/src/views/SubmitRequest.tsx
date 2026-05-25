@@ -1,7 +1,12 @@
+import { Check, Send } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { FileDropzone } from "../components/FileDropzone";
+import { Alert } from "../components/ui/Alert";
+import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { AgentTopologyBuilder } from "../components/topology/AgentTopologyBuilder";
+import { AgentTypeIcons } from "../lib/icons";
 import {
   defaultTopology,
   topologyForApi,
@@ -9,23 +14,17 @@ import {
   type AgentTopology,
 } from "../components/topology/topologyTypes";
 import { api, type ProviderCatalogItem } from "../api";
-import type { AgentInfo, AgentType, GenericWorkflowAgent, Priority } from "../types";
+import { useWorkflowPreferences } from "../context/WorkflowPreferencesContext";
+import type { AgentInfo, AgentType, Priority, WorkflowTemplate } from "../types";
 
-const AGENT_META: Record<
-  AgentType,
-  { title: string; blurb: string; icon: string; accent: string }
-> = {
+const AGENT_META: Record<AgentType, { title: string; blurb: string }> = {
   doc_to_sheets: {
     title: "Document → Sheets",
     blurb: "Upload a file, preview extracted rows, approve, then append to Google Sheets.",
-    icon: "📊",
-    accent: "border-emerald-600/50 bg-emerald-950/30 ring-emerald-500/40",
   },
   workflow: {
     title: "General workflow",
     blurb: "Multi-step agent with planning, execution, and human approval gates.",
-    icon: "⚡",
-    accent: "border-sky-600/50 bg-sky-950/30 ring-sky-500/40",
   },
 };
 
@@ -37,6 +36,11 @@ const PRIORITIES: { value: Priority; label: string; hint: string }[] = [
 
 export function SubmitRequest() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const templateParam = searchParams.get("template");
+  const { advancedMode, catalog: genericCatalog, refresh: refreshWorkflowPrefs } =
+    useWorkflowPreferences();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [providers, setProviders] = useState<ProviderCatalogItem[]>([]);
   const [defaultProviderId, setDefaultProviderId] = useState("");
@@ -52,25 +56,65 @@ export function SubmitRequest() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [genericCatalog, setGenericCatalog] = useState<GenericWorkflowAgent[]>([]);
   const [agentTopology, setAgentTopology] = useState<AgentTopology | null>(null);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
+  function applyTemplate(tpl: WorkflowTemplate) {
+    setAgentType(tpl.agent_type);
+    setTitle(tpl.name);
+    setDescription(tpl.description_template);
+    setPriority(tpl.default_priority);
+    if (tpl.agent_topology) {
+      setAgentTopology({
+        type: tpl.agent_topology.type,
+        nodes: tpl.agent_topology.nodes,
+        edges: tpl.agent_topology.edges ?? [],
+      });
+    }
+    if (tpl.provider_id) {
+      setUseCustomLlm(true);
+      setProviderId(tpl.provider_id);
+      setModelId(tpl.model_id ?? "");
+    }
+  }
+
+  useEffect(() => {
+    void refreshWorkflowPrefs();
+  }, [location.pathname, refreshWorkflowPrefs]);
 
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
-    Promise.all([api.getProviders(), api.getWorkflowGenericAgents()])
-      .then(([prov, catalogRes]) => {
+    Promise.all([api.getProviders(), api.listWorkflowTemplates()])
+      .then(([prov, tplRes]) => {
         setProviders(prov.providers);
         setDefaultProviderId(prov.settings.default_provider_id);
         setDefaultModelId(prov.settings.default_model_id);
         setProviderId(prov.settings.default_provider_id);
         setModelId(prov.settings.default_model_id);
-        setGenericCatalog(catalogRes.agents);
-        setAgentTopology((prev) =>
-          prev ?? defaultTopology("orchestrator", catalogRes.agents),
-        );
+        setTemplates(tplRes.templates);
+        const tid = templateParam || "";
+        if (tid) {
+          const tpl = tplRes.templates.find((t) => t.id === tid);
+          if (tpl) {
+            setSelectedTemplateId(tid);
+            applyTemplate(tpl);
+          }
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [templateParam]);
+
+  useEffect(() => {
+    if (!genericCatalog.length) return;
+    setAgentTopology((prev) => prev ?? defaultTopology("orchestrator", genericCatalog));
+  }, [genericCatalog]);
+
+  useEffect(() => {
+    if (advancedMode && agentType === "doc_to_sheets" && !templateParam) {
+      setAgentType("workflow");
+    }
+  }, [advancedMode, agentType, templateParam]);
 
   const agentOptions = useMemo(() => {
     if (agents.length) return agents;
@@ -83,6 +127,13 @@ export function SubmitRequest() {
   const isDoc = agentType === "doc_to_sheets";
   const selectedProvider = providers.find((p) => p.id === providerId);
   const defaultProvider = providers.find((p) => p.id === defaultProviderId);
+
+  const sendTopology =
+    !isDoc &&
+    !!agentTopology &&
+    (advancedMode || !!selectedTemplateId);
+
+  const topologyPayload = sendTopology && agentTopology ? topologyForApi(agentTopology) : undefined;
 
   const canSubmit =
     title.trim().length > 0 &&
@@ -97,7 +148,7 @@ export function SubmitRequest() {
       setError("Please add a document to upload.");
       return;
     }
-    if (!isDoc && agentTopology) {
+    if (sendTopology && agentTopology) {
       const topoErr = validateTopology(agentTopology);
       if (topoErr) {
         setError(topoErr);
@@ -108,13 +159,18 @@ export function SubmitRequest() {
     setError(null);
     try {
       let created;
-      if (isDoc && file) {
+      if (file && (isDoc || agentType === "workflow")) {
         const form = new FormData();
         form.append("title", title.trim());
         form.append("description", description.trim());
         form.append("priority", priority);
-        form.append("agent_type", "doc_to_sheets");
-        form.append("sheet_url", sheetUrl.trim());
+        form.append("agent_type", agentType);
+        if (isDoc) {
+          form.append("sheet_url", sheetUrl.trim());
+        }
+        if (topologyPayload) {
+          form.append("agent_topology_json", JSON.stringify(topologyPayload));
+        }
         if (useCustomLlm && providerId) {
           form.append("provider_id", providerId);
           form.append("model_id", modelId);
@@ -130,7 +186,7 @@ export function SubmitRequest() {
           sheet_url: sheetUrl.trim() || undefined,
           provider_id: useCustomLlm ? providerId : "",
           model_id: useCustomLlm ? modelId : "",
-          agent_topology: agentTopology ? topologyForApi(agentTopology) : undefined,
+          agent_topology: topologyPayload,
         });
       }
       navigate(`/requests/${created.id}`);
@@ -143,15 +199,38 @@ export function SubmitRequest() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wider text-sky-500/90">New request</p>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-50">Submit a request</h2>
-        <p className="text-sm text-slate-400 leading-relaxed">
-          Choose an agent, describe what you need, and we&apos;ll run it with approval checkpoints along the way.
-        </p>
-      </div>
+      <PageHeader
+        title="Submit a request"
+        description="Choose an agent, describe what you need, and run it with approval checkpoints along the way."
+      />
 
       <form onSubmit={onSubmit} className="space-y-5">
+        {templates.length > 0 && (
+          <section className="oma-section space-y-2">
+            <label className="oma-label block">Start from workflow template</label>
+            <select
+              className="oma-input"
+              value={selectedTemplateId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedTemplateId(id);
+                const tpl = templates.find((t) => t.id === id);
+                if (tpl) applyTemplate(tpl);
+              }}
+            >
+              <option value="">None (custom)</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <p className="oma-hint">
+              Use {"{{date}}"} or {"{{week}}"} in descriptions — filled when you run from Workflows.
+            </p>
+          </section>
+        )}
+
         {/* Agent picker */}
         <section className="oma-section space-y-3">
           <div>
@@ -162,6 +241,7 @@ export function SubmitRequest() {
             {agentOptions.map((a) => {
               const meta = AGENT_META[a.id];
               const selected = agentType === a.id;
+              const Icon = AgentTypeIcons[a.id];
               return (
                 <button
                   key={a.id}
@@ -169,22 +249,36 @@ export function SubmitRequest() {
                   onClick={() => setAgentType(a.id)}
                   className={[
                     "relative rounded-xl border p-4 text-left transition",
-                    selected
-                      ? `ring-2 ${meta.accent}`
-                      : "border-slate-800 bg-slate-950/50 hover:border-slate-600 hover:bg-slate-900/60",
+                    selected ? "ring-2" : "hover:opacity-90",
                   ].join(" ")}
+                  style={{
+                    borderColor: selected ? "var(--oma-primary)" : "var(--oma-border)",
+                    backgroundColor: selected
+                      ? "color-mix(in srgb, var(--oma-primary) 8%, var(--oma-surface))"
+                      : "var(--oma-surface)",
+                    ...(selected ? { boxShadow: "0 0 0 1px var(--oma-primary)" } : {}),
+                  }}
                 >
-                  <span className="text-2xl" aria-hidden>
-                    {meta.icon}
+                  <span
+                    className="flex h-10 w-10 items-center justify-center rounded-lg"
+                    style={{
+                      backgroundColor: "var(--oma-surface-elevated)",
+                      color: "var(--oma-primary)",
+                    }}
+                  >
+                    <Icon size={22} aria-hidden />
                   </span>
-                  <p className="mt-2 font-medium text-slate-100">{a.name}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    {a.description || meta.blurb}
+                  <p className="mt-2 font-medium" style={{ color: "var(--oma-text)" }}>
+                    {a.name}
                   </p>
+                  <p className="oma-hint mt-1 leading-relaxed">{a.description || meta.blurb}</p>
                   {selected && (
-                    <span className="absolute right-3 top-3 text-sky-400" aria-hidden>
-                      ✓
-                    </span>
+                    <Check
+                      className="absolute right-3 top-3"
+                      size={18}
+                      style={{ color: "var(--oma-primary)" }}
+                      aria-hidden
+                    />
                   )}
                 </button>
               );
@@ -267,12 +361,21 @@ export function SubmitRequest() {
                   type="button"
                   disabled={busy}
                   onClick={() => setPriority(p.value)}
-                  className={[
-                    "rounded-lg border px-4 py-2 text-left text-sm transition",
+                  className="rounded-lg border px-4 py-2 text-left text-sm transition"
+                  style={
                     priority === p.value
-                      ? "border-sky-600/60 bg-sky-950/50 text-sky-100 ring-1 ring-sky-500/30"
-                      : "border-slate-700/80 bg-slate-950/50 text-slate-400 hover:border-slate-600 hover:text-slate-200",
-                  ].join(" ")}
+                      ? {
+                          borderColor: "var(--oma-primary)",
+                          backgroundColor:
+                            "color-mix(in srgb, var(--oma-primary) 10%, var(--oma-surface))",
+                          color: "var(--oma-text)",
+                        }
+                      : {
+                          borderColor: "var(--oma-border)",
+                          backgroundColor: "var(--oma-surface)",
+                          color: "var(--oma-muted)",
+                        }
+                  }
                 >
                   <span className="font-medium">{p.label}</span>
                   <span className="ml-2 text-xs opacity-70">{p.hint}</span>
@@ -282,13 +385,43 @@ export function SubmitRequest() {
           </div>
         </section>
 
-        {!isDoc && agentTopology && (
+        {!isDoc && (
+          <section className="oma-section space-y-3">
+            <div>
+              <h3 className="oma-label">Document (optional)</h3>
+              <p className="oma-hint mt-0.5">
+                Upload a PDF, spreadsheet, or text file for private-doc specialists. Copies are
+                stored under data/uploads; excerpts may be sent to your LLM when the workflow runs.
+              </p>
+            </div>
+            <FileDropzone file={file} onFileChange={setFile} disabled={busy} />
+          </section>
+        )}
+
+        {!isDoc && advancedMode && agentTopology && (
           <AgentTopologyBuilder
             catalog={genericCatalog}
             value={agentTopology}
             onChange={setAgentTopology}
             disabled={busy}
           />
+        )}
+
+        {!isDoc && !advancedMode && (
+          <p
+            className="rounded-lg border px-4 py-3 text-sm"
+            style={{
+              borderColor: "var(--oma-border)",
+              backgroundColor: "var(--oma-surface-elevated)",
+              color: "var(--oma-muted)",
+            }}
+          >
+            Agent builder is hidden. Enable{" "}
+            <Link to="/settings" className="font-medium hover:underline" style={{ color: "var(--oma-primary)" }}>
+              Advanced mode
+            </Link>{" "}
+            in Settings to customize specialists on the canvas, or pick a workflow template above.
+          </p>
         )}
 
         {/* LLM override */}
@@ -310,17 +443,28 @@ export function SubmitRequest() {
               </p>
             </div>
             <span
-              className={[
-                "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                useCustomLlm ? "bg-sky-900/60 text-sky-300" : "bg-slate-800 text-slate-500",
-              ].join(" ")}
+              className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium"
+              style={
+                useCustomLlm
+                  ? {
+                      backgroundColor: "color-mix(in srgb, var(--oma-primary) 15%, var(--oma-surface))",
+                      color: "var(--oma-primary)",
+                    }
+                  : {
+                      backgroundColor: "var(--oma-surface-elevated)",
+                      color: "var(--oma-muted)",
+                    }
+              }
             >
               {useCustomLlm ? "Custom" : "Default"}
             </span>
           </button>
 
           {useCustomLlm && (
-            <div className="grid gap-3 border-t border-slate-800/80 pt-3 sm:grid-cols-2">
+            <div
+              className="grid gap-3 border-t pt-3 sm:grid-cols-2"
+              style={{ borderColor: "var(--oma-border)" }}
+            >
               <label className="space-y-1.5">
                 <span className="oma-hint">Provider</span>
                 <select
@@ -359,7 +503,7 @@ export function SubmitRequest() {
               {selectedProvider?.status === "needs_config" && (
                 <p className="oma-hint sm:col-span-2">
                   This provider isn&apos;t connected yet.{" "}
-                  <Link to="/settings" className="text-sky-400 hover:underline">
+                  <Link to="/settings" className="font-medium hover:underline" style={{ color: "var(--oma-primary)" }}>
                     Configure in Settings
                   </Link>
                 </p>
@@ -368,37 +512,24 @@ export function SubmitRequest() {
           )}
         </section>
 
-        {error && (
-          <div
-            role="alert"
-            className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-300"
-          >
-            {error}
-          </div>
-        )}
+        {error && <Alert variant="error">{error}</Alert>}
 
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-800/80 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <Link to="/" className="text-center text-sm text-slate-500 hover:text-slate-300 sm:text-left">
+        <div
+          className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderColor: "var(--oma-border)" }}
+        >
+          <Link to="/" className="oma-hint text-center text-sm hover:underline sm:text-left">
             ← Back to requests
           </Link>
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            icon={Send}
             disabled={!canSubmit}
-            className={[
-              "inline-flex items-center justify-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold transition",
-              canSubmit
-                ? "bg-sky-600 text-white shadow-lg shadow-sky-900/30 hover:bg-sky-500"
-                : "cursor-not-allowed bg-slate-800 text-slate-500",
-            ].join(" ")}
+            className="!px-6 !py-2.5 !font-semibold"
           >
-            {busy && (
-              <span
-                className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
-                aria-hidden
-              />
-            )}
             {busy ? "Starting agent…" : isDoc ? "Upload & start extraction" : "Submit request"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

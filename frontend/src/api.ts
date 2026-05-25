@@ -4,7 +4,12 @@ import type {
   GenericWorkflowAgent,
   RequestDetail,
   RequestSummary,
+  AutomationSettings,
+  WorkflowSchedule,
+  WorkflowScheduleBody,
   WorkflowSettings,
+  WorkflowTemplate,
+  WorkflowTemplateBody,
 } from "./types";
 
 export interface ProviderCatalogItem {
@@ -62,6 +67,15 @@ export const api = {
 
   getRequest: (id: string) =>
     fetch(`${API}/requests/${id}`).then((r) => json<RequestDetail>(r)),
+
+  deleteRequest: (id: string) =>
+    fetch(`${API}/requests/${id}`, { method: "DELETE" }).then((r) => {
+      if (!r.ok) {
+        return r.text().then((text) => {
+          throw new Error(text || r.statusText);
+        });
+      }
+    }),
 
   createRequest: (body: CreateRequestBody) =>
     fetch(`${API}/requests`, {
@@ -147,10 +161,112 @@ export const api = {
       json<{ settings: WorkflowSettings }>(r),
     ),
 
-  updateWorkflowSettings: (enabled_generic_agents: string[]) =>
+  updateWorkflowSettings: (body: {
+    enabled_generic_agents?: string[];
+    advanced_mode?: boolean;
+  }) =>
     fetch(`${API}/workflow/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled_generic_agents }),
+      body: JSON.stringify(body),
     }).then((r) => json<{ settings: WorkflowSettings }>(r)),
+
+  listWorkflowTemplates: () =>
+    fetch(`${API}/workflow-templates`).then((r) =>
+      json<{ templates: WorkflowTemplate[] }>(r),
+    ),
+
+  getWorkflowTemplate: (id: string) =>
+    fetch(`${API}/workflow-templates/${id}`).then((r) => json<WorkflowTemplate>(r)),
+
+  createWorkflowTemplate: (body: WorkflowTemplateBody) =>
+    fetch(`${API}/workflow-templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowTemplate>(r)),
+
+  updateWorkflowTemplate: (id: string, body: WorkflowTemplateBody) =>
+    fetch(`${API}/workflow-templates/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowTemplate>(r)),
+
+  deleteWorkflowTemplate: (id: string) =>
+    fetch(`${API}/workflow-templates/${id}`, { method: "DELETE" }).then((r) => {
+      if (!r.ok) throw new Error(r.statusText);
+    }),
+
+  runWorkflowTemplate: (id: string, body?: { title?: string; description_vars?: Record<string, string> }) =>
+    fetch(`${API}/workflow-templates/${id}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    }).then((r) => json<RequestSummary>(r)),
+
+  saveRequestAsTemplate: (
+    requestId: string,
+    body: { name: string; description_template?: string; icon?: string; category?: string },
+  ) =>
+    fetch(`${API}/requests/${requestId}/save-as-template`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowTemplate>(r)),
+
+  exportWorkflowTemplateUrl: (id: string) => `${API}/workflow-templates/${id}/export`,
+
+  importWorkflowTemplate: (body: WorkflowTemplateBody) =>
+    fetch(`${API}/workflow-templates/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowTemplate>(r)),
+
+  listWorkflowSchedules: () =>
+    fetch(`${API}/workflow-schedules`).then((r) =>
+      json<{ schedules: WorkflowSchedule[] }>(r),
+    ),
+
+  createWorkflowSchedule: (body: WorkflowScheduleBody) =>
+    fetch(`${API}/workflow-schedules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowSchedule>(r)),
+
+  updateWorkflowSchedule: (id: string, body: WorkflowScheduleBody) =>
+    fetch(`${API}/workflow-schedules/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<WorkflowSchedule>(r)),
+
+  deleteWorkflowSchedule: (id: string) =>
+    fetch(`${API}/workflow-schedules/${id}`, { method: "DELETE" }).then((r) => {
+      if (!r.ok) throw new Error(r.statusText);
+    }),
+
+  triggerWorkflowSchedule: (id: string) =>
+    fetch(`${API}/workflow-schedules/${id}/trigger`, { method: "POST" }).then((r) =>
+      json<RequestSummary>(r),
+    ),
+
+  getAutomationSettings: () =>
+    fetch(`${API}/automation/settings`).then((r) =>
+      json<{ settings: AutomationSettings }>(r),
+    ),
+
+  updateAutomationSettings: (body: Partial<AutomationSettings>) =>
+    fetch(`${API}/automation/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<{ settings: AutomationSettings }>(r)),
+
+  scanInbox: () =>
+    fetch(`${API}/automation/scan-inbox`, { method: "POST" }).then((r) =>
+      json<{ created: number }>(r),
+    ),
 };

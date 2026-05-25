@@ -11,13 +11,13 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ["OPENMINIAGENTS_STUB_RUN"] = "1"
-os.environ["OPENMINIAGENTS_DATA_DIR"] = "/tmp/openminiagents-doc-test"
+os.environ["ORCHESTRUMAI_STUB_RUN"] = "1"
+os.environ["ORCHESTRUMAI_DATA_DIR"] = "/tmp/orchestrumai-doc-test"
 os.environ["SHEETS_WRITE_ENABLED"] = "0"
 
-from openminiagents.app import create_app
-from openminiagents.document_parser import extract_table
-from openminiagents.sheets_client import append_rows, parse_spreadsheet_id
+from orchestrumai.app import create_app
+from orchestrumai.document_parser import extract_table
+from orchestrumai.sheets_client import append_rows, parse_spreadsheet_id
 
 
 @pytest.fixture

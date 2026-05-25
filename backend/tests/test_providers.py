@@ -7,11 +7,11 @@ import os
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ["OPENMINIAGENTS_STUB_RUN"] = "1"
-os.environ["OPENMINIAGENTS_DATA_DIR"] = "/tmp/openminiagents-provider-test"
+os.environ["ORCHESTRUMAI_STUB_RUN"] = "1"
+os.environ["ORCHESTRUMAI_DATA_DIR"] = "/tmp/orchestrumai-provider-test"
 
-from openminiagents.app import create_app
-from openminiagents.llm_providers import build_adk_model, catalog_for_api, get_provider
+from orchestrumai.app import create_app
+from orchestrumai.llm_providers import build_adk_model, catalog_for_api, get_provider
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def test_build_gemini_native_model():
 
 
 def test_chatgpt_oauth_needs_connect():
-    from openminiagents.chatgpt_oauth import delete_tokens
+    from orchestrumai.chatgpt_oauth import delete_tokens
 
     delete_tokens()
     with pytest.raises(ValueError, match="not connected"):

@@ -12,4 +12,8 @@ Always read `current_step` from session state (not from chat history). Follow th
 5. COMPLETED or FAILED — Respond briefly; do not call more workflow tools.
 
 Keep responses concise. Use tools to update state; never invent step transitions without tools.
+
+If session state includes file_path / file_name, the user uploaded a local document under data/uploads.
+Mention it in proposed_actions when specialist sub-agents will read that file. Private doc specialists
+never use public URLs.
 """

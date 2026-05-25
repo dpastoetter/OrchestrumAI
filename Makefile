@@ -2,14 +2,14 @@
 
 PYTHONPATH := backend:agents:.
 export PYTHONPATH
-export OPENMINIAGENTS_STUB_RUN ?= 1
+export ORCHESTRUMAI_STUB_RUN ?= 1
 
 install:
 	pip install -e ".[dev]"
 	cd frontend && npm install
 
 dev-backend:
-	uvicorn openminiagents.app:create_app --factory --host 127.0.0.1 --port 8000 --reload-dir backend --reload-dir agents
+	uvicorn orchestrumai.app:create_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir backend --reload-dir agents
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -21,4 +21,4 @@ build-frontend:
 	cd frontend && npm run build
 
 test:
-	OPENMINIAGENTS_STUB_RUN=1 pytest backend/tests -q
+	ORCHESTRUMAI_STUB_RUN=1 pytest backend/tests -q

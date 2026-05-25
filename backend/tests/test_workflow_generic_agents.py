@@ -8,11 +8,11 @@ import os
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-os.environ["OPENMINIAGENTS_STUB_RUN"] = "1"
-os.environ["OPENMINIAGENTS_DATA_DIR"] = "/tmp/openminiagents-wf-generic-test"
+os.environ["ORCHESTRUMAI_STUB_RUN"] = "1"
+os.environ["ORCHESTRUMAI_DATA_DIR"] = "/tmp/orchestrumai-wf-generic-test"
 
-from openminiagents.app import create_app
-from openminiagents.workflow_settings import (
+from orchestrumai.app import create_app
+from orchestrumai.workflow_settings import (
     get_workflow_settings,
     resolve_enabled_for_request,
     update_workflow_settings,
@@ -38,12 +38,12 @@ async def client():
         yield ac
 
 
-def test_catalog_lists_three_agents():
+def test_catalog_lists_agents():
     from workflow_agent.generic_agents.catalog import GENERIC_AGENT_CATALOG
 
-    assert len(GENERIC_AGENT_CATALOG) == 3
+    assert len(GENERIC_AGENT_CATALOG) >= 8
     ids = {a.id for a in GENERIC_AGENT_CATALOG}
-    assert ids == {"research", "writer", "editor"}
+    assert {"research", "writer", "editor", "text_extract", "table_peek"}.issubset(ids)
 
 
 def test_resolve_enabled_request_override():
@@ -76,7 +76,9 @@ async def test_generic_agents_api(client: AsyncClient) -> None:
     r = await client.get("/api/workflow/generic-agents")
     assert r.status_code == 200
     agents = r.json()["agents"]
-    assert len(agents) == 3
+    assert len(agents) >= 8
+    categories = {a["category"] for a in agents}
+    assert "private_doc" in categories
     assert agents[0]["id"] in ("research", "writer", "editor")
 
 
@@ -92,6 +94,10 @@ async def test_workflow_settings_round_trip(client: AsyncClient) -> None:
     r2 = await client.get("/api/workflow/settings")
     assert r2.status_code == 200
     assert set(r2.json()["settings"]["enabled_generic_agents"]) == {"writer", "editor"}
+
+    r3 = await client.put("/api/workflow/settings", json={"advanced_mode": True})
+    assert r3.status_code == 200
+    assert r3.json()["settings"]["advanced_mode"] is True
 
 
 @pytest.mark.anyio

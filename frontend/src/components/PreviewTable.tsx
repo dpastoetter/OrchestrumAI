@@ -5,26 +5,33 @@ interface PreviewTableProps {
 
 export function PreviewTable({ columns, rows }: PreviewTableProps) {
   if (!columns.length || !rows.length) {
-    return <p className="text-sm text-slate-500">No preview rows yet.</p>;
+    return <p className="oma-hint text-sm">No preview rows yet.</p>;
   }
   const displayRows = rows.slice(0, 50);
   return (
-    <div className="overflow-x-auto rounded border border-slate-700">
+    <div
+      className="overflow-x-auto rounded-lg border"
+      style={{ borderColor: "var(--oma-border)" }}
+    >
       <table className="min-w-full text-left text-sm">
-        <thead className="bg-slate-800/80">
+        <thead style={{ backgroundColor: "var(--oma-surface-elevated)" }}>
           <tr>
             {columns.map((col) => (
-              <th key={col} className="px-3 py-2 font-medium text-slate-300">
+              <th
+                key={col}
+                className="px-3 py-2 font-medium"
+                style={{ color: "var(--oma-text)" }}
+              >
                 {col}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody style={{ backgroundColor: "var(--oma-surface)" }}>
           {displayRows.map((row, i) => (
-            <tr key={i} className="border-t border-slate-800">
+            <tr key={i} className="border-t" style={{ borderColor: "var(--oma-border)" }}>
               {columns.map((col) => (
-                <td key={col} className="px-3 py-2 text-slate-400">
+                <td key={col} className="px-3 py-2" style={{ color: "var(--oma-muted)" }}>
                   {row[col] ?? ""}
                 </td>
               ))}
@@ -33,7 +40,7 @@ export function PreviewTable({ columns, rows }: PreviewTableProps) {
         </tbody>
       </table>
       {rows.length > 50 && (
-        <p className="px-3 py-2 text-xs text-slate-500">Showing 50 of {rows.length} rows</p>
+        <p className="oma-hint px-3 py-2">Showing 50 of {rows.length} rows</p>
       )}
     </div>
   );
