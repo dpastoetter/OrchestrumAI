@@ -31,6 +31,43 @@ def _event_text(event: Any) -> str:
     return "".join(p.text for p in event.content.parts if p.text).strip()
 
 
+def _canonical_topology_key(topology: dict[str, Any] | None) -> str:
+    if not topology:
+        return ""
+    return json.dumps(topology, sort_keys=True, separators=(",", ":"))
+
+
+def _parse_agent_topology(state: dict[str, Any]) -> dict[str, Any] | None:
+    raw = state.get("agent_topology")
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _parse_enabled_generic_agents(state: dict[str, Any]) -> list[str]:
+    raw = state.get("enabled_generic_agents")
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed]
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
 def _event_to_payload(event: Any, step: str) -> AgentEventPayload:
     kind = "message"
     if event.get_function_calls():
@@ -61,8 +98,16 @@ class RunnerBridge:
         agent_type: str,
         provider_id: str | None,
         model_id: str | None,
+        enabled_generic_agents: list[str] | None = None,
+        agent_topology: dict[str, Any] | None = None,
     ) -> str:
-        return f"{app_name_for(agent_type)}:{provider_id or ''}:{model_id or ''}"
+        if agent_topology is not None:
+            topo = _canonical_topology_key(agent_topology)
+            return f"{app_name_for(agent_type)}:{provider_id or ''}:{model_id or ''}:topo:{topo}"
+        generic = ""
+        if enabled_generic_agents is not None:
+            generic = ",".join(sorted(enabled_generic_agents))
+        return f"{app_name_for(agent_type)}:{provider_id or ''}:{model_id or ''}:{generic}"
 
     def _get_runner(
         self,
@@ -70,12 +115,24 @@ class RunnerBridge:
         *,
         provider_id: str | None = None,
         model_id: str | None = None,
+        enabled_generic_agents: list[str] | None = None,
+        agent_topology: dict[str, Any] | None = None,
     ) -> Runner:
         app_name = app_name_for(agent_type)
-        key = self._runner_key(agent_type, provider_id, model_id)
+        key = self._runner_key(
+            agent_type,
+            provider_id,
+            model_id,
+            enabled_generic_agents,
+            agent_topology,
+        )
         if key not in self._runners:
             root_agent, _, _ = load_agent_bundle(
-                agent_type, provider_id=provider_id, model_id=model_id
+                agent_type,
+                provider_id=provider_id,
+                model_id=model_id,
+                enabled_generic_agents=enabled_generic_agents,
+                agent_topology=agent_topology,
             )
             self._runners[key] = Runner(
                 agent=root_agent,
@@ -96,9 +153,15 @@ class RunnerBridge:
         extra_state: dict[str, Any] | None = None,
         provider_id: str | None = None,
         model_id: str | None = None,
+        enabled_generic_agents: list[str] | None = None,
+        agent_topology: dict[str, Any] | None = None,
     ) -> str:
         _, initial_state, resolved = load_agent_bundle(
-            agent_type, provider_id=provider_id, model_id=model_id
+            agent_type,
+            provider_id=provider_id,
+            model_id=model_id,
+            enabled_generic_agents=enabled_generic_agents,
+            agent_topology=agent_topology,
         )
         state = {
             **initial_state,
@@ -151,6 +214,8 @@ class RunnerBridge:
         )
         pid = provider_id or state.get("llm_provider_id")
         mid = model_id or state.get("llm_model_id")
+        enabled = _parse_enabled_generic_agents(state)
+        topology = _parse_agent_topology(state)
         app_name = app_name_for(agent_type)
         if STUB_RUN and normalize_agent_type(agent_type) == "workflow":
             async for p in self._stub_workflow_turn(
@@ -163,7 +228,14 @@ class RunnerBridge:
                 yield p
             return
 
-        runner = self._get_runner(agent_type, provider_id=pid, model_id=mid)
+        is_workflow = normalize_agent_type(agent_type) == "workflow"
+        runner = self._get_runner(
+            agent_type,
+            provider_id=str(pid) if pid else None,
+            model_id=str(mid) if mid else None,
+            enabled_generic_agents=enabled if is_workflow and not topology else None,
+            agent_topology=topology if is_workflow else None,
+        )
         new_message = types.Content(role="user", parts=[types.Part(text=message)])
         step = "SUBMITTED"
         async for event in runner.run_async(
@@ -329,6 +401,26 @@ class RunnerBridge:
         from workflow_agent.state_schema import WorkflowStep
 
         app_name = app_name_for("workflow")
+        state = await self.get_session_state(
+            agent_type="workflow", user_id=user_id, session_id=session_id
+        )
+        enabled = _parse_enabled_generic_agents(state)
+        topology = _parse_agent_topology(state)
+        delegate_note = ""
+        if topology:
+            try:
+                from workflow_agent.topology import AgentTopology
+
+                topo = AgentTopology.model_validate(topology)
+                labels = ", ".join(topo.summary_labels())
+                delegate_note = (
+                    f" Topology: {topo.type}."
+                    f" Agents: {labels}."
+                )
+            except Exception:
+                delegate_note = f" Topology: {topology.get('type', 'custom')}."
+        elif enabled:
+            delegate_note = f" Enabled specialists: {', '.join(enabled)}."
         await self._apply_state(
             app_name=app_name,
             user_id=user_id,
@@ -346,7 +438,7 @@ class RunnerBridge:
             updates={
                 "current_step": WorkflowStep.AWAITING_APPROVAL,
                 "approval_summary": "Stub workflow ready for review.",
-                "proposed_actions": "1. Analyze\n2. Execute\n3. Complete",
+                "proposed_actions": f"1. Analyze\n2. Delegate to specialists\n3. Complete.{delegate_note}",
                 "status_message": "Waiting for approval (stub).",
                 "latest_output": "Plan ready.",
             },

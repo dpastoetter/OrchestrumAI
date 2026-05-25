@@ -18,6 +18,7 @@ from .llm_providers import apply_litellm_env
 from .provider_settings import get_provider_settings
 from .providers_api import router as providers_router
 from .requests_api import router as requests_router
+from .workflow_api import router as workflow_router
 
 load_dotenv()
 
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
 
     app.include_router(requests_router, prefix="/api")
     app.include_router(providers_router, prefix="/api")
+    app.include_router(workflow_router, prefix="/api")
 
     dist = _frontend_dist()
     if dist is not None:

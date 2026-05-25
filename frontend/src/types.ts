@@ -23,6 +23,9 @@ export interface RequestSummary {
   status: string;
   status_message: string;
   latest_output: string;
+  enabled_generic_agents?: string[];
+  agent_topology_type?: string;
+  agent_topology_labels?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +46,27 @@ export interface RequestDetail extends RequestSummary {
   events: Array<{ kind: string; text: string; step: string }>;
 }
 
+export type TopologyType = "simple" | "sequential" | "orchestrator";
+
+export interface TopologyNode {
+  id: string;
+  kind: "catalog" | "custom";
+  catalog_id?: string;
+  name?: string;
+  instruction?: string;
+}
+
+export interface TopologyEdge {
+  from: string;
+  to: string;
+}
+
+export interface AgentTopology {
+  type: TopologyType;
+  nodes: TopologyNode[];
+  edges?: TopologyEdge[];
+}
+
 export interface CreateRequestBody {
   title: string;
   description: string;
@@ -51,4 +75,17 @@ export interface CreateRequestBody {
   sheet_url?: string;
   provider_id?: string;
   model_id?: string;
+  enabled_generic_agents?: string[];
+  agent_topology?: AgentTopology;
+}
+
+export interface GenericWorkflowAgent {
+  id: string;
+  name: string;
+  description: string;
+  default_enabled: boolean;
+}
+
+export interface WorkflowSettings {
+  enabled_generic_agents: string[];
 }

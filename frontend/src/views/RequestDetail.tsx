@@ -56,11 +56,35 @@ export function RequestDetail() {
         ← All requests
       </Link>
       <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-6 space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold">{detail.title}</h2>
           <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
             {isDoc ? "Doc → Sheets" : "Workflow"}
           </span>
+          {!isDoc && detail.agent_topology_type && (
+            <span className="rounded bg-violet-950/50 px-2 py-0.5 text-xs text-violet-300 ring-1 ring-violet-800/50">
+              {detail.agent_topology_type}
+            </span>
+          )}
+          {!isDoc &&
+            (detail.agent_topology_labels ?? []).map((label) => (
+              <span
+                key={label}
+                className="rounded bg-sky-950/50 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-800/50"
+              >
+                {label}
+              </span>
+            ))}
+          {!isDoc &&
+            !detail.agent_topology_type &&
+            (detail.enabled_generic_agents ?? []).map((id) => (
+              <span
+                key={id}
+                className="rounded bg-sky-950/50 px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-800/50"
+              >
+                {id}
+              </span>
+            ))}
         </div>
         {detail.file_name && (
           <p className="text-sm text-slate-500">File: {detail.file_name}</p>

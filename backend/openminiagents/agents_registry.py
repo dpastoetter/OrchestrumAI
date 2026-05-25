@@ -29,6 +29,8 @@ def load_agent_bundle(
     *,
     provider_id: str | None = None,
     model_id: str | None = None,
+    enabled_generic_agents: list[str] | None = None,
+    agent_topology: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any], ResolvedModel]:
     """Return (root_agent, initial_state, resolved_model)."""
     apply_litellm_env()
@@ -38,6 +40,17 @@ def load_agent_bundle(
         from doc_to_sheets_agent.agent import INITIAL_STATE, build_agent
 
         return build_agent(resolved.adk_model), INITIAL_STATE, resolved
-    from workflow_agent.agent import INITIAL_STATE, build_agent
+    from workflow_agent.agent import build_agent, build_initial_state
 
-    return build_agent(resolved.adk_model), INITIAL_STATE, resolved
+    if agent_topology is not None:
+        return (
+            build_agent(resolved.adk_model, topology=agent_topology),
+            build_initial_state(topology=agent_topology),
+            resolved,
+        )
+    enabled = enabled_generic_agents
+    return (
+        build_agent(resolved.adk_model, enabled),
+        build_initial_state(enabled),
+        resolved,
+    )

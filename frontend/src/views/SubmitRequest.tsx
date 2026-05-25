@@ -1,8 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileDropzone } from "../components/FileDropzone";
+import { AgentTopologyBuilder } from "../components/topology/AgentTopologyBuilder";
+import {
+  defaultTopology,
+  topologyForApi,
+  validateTopology,
+  type AgentTopology,
+} from "../components/topology/topologyTypes";
 import { api, type ProviderCatalogItem } from "../api";
-import type { AgentInfo, AgentType, Priority } from "../types";
+import type { AgentInfo, AgentType, GenericWorkflowAgent, Priority } from "../types";
 
 const AGENT_META: Record<
   AgentType,
@@ -45,17 +52,22 @@ export function SubmitRequest() {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [genericCatalog, setGenericCatalog] = useState<GenericWorkflowAgent[]>([]);
+  const [agentTopology, setAgentTopology] = useState<AgentTopology | null>(null);
 
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
-    api
-      .getProviders()
-      .then((d) => {
-        setProviders(d.providers);
-        setDefaultProviderId(d.settings.default_provider_id);
-        setDefaultModelId(d.settings.default_model_id);
-        setProviderId(d.settings.default_provider_id);
-        setModelId(d.settings.default_model_id);
+    Promise.all([api.getProviders(), api.getWorkflowGenericAgents()])
+      .then(([prov, catalogRes]) => {
+        setProviders(prov.providers);
+        setDefaultProviderId(prov.settings.default_provider_id);
+        setDefaultModelId(prov.settings.default_model_id);
+        setProviderId(prov.settings.default_provider_id);
+        setModelId(prov.settings.default_model_id);
+        setGenericCatalog(catalogRes.agents);
+        setAgentTopology((prev) =>
+          prev ?? defaultTopology("orchestrator", catalogRes.agents),
+        );
       })
       .catch(() => {});
   }, []);
@@ -85,6 +97,13 @@ export function SubmitRequest() {
       setError("Please add a document to upload.");
       return;
     }
+    if (!isDoc && agentTopology) {
+      const topoErr = validateTopology(agentTopology);
+      if (topoErr) {
+        setError(topoErr);
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     try {
@@ -111,6 +130,7 @@ export function SubmitRequest() {
           sheet_url: sheetUrl.trim() || undefined,
           provider_id: useCustomLlm ? providerId : "",
           model_id: useCustomLlm ? modelId : "",
+          agent_topology: agentTopology ? topologyForApi(agentTopology) : undefined,
         });
       }
       navigate(`/requests/${created.id}`);
@@ -261,6 +281,15 @@ export function SubmitRequest() {
             </div>
           </div>
         </section>
+
+        {!isDoc && agentTopology && (
+          <AgentTopologyBuilder
+            catalog={genericCatalog}
+            value={agentTopology}
+            onChange={setAgentTopology}
+            disabled={busy}
+          />
+        )}
 
         {/* LLM override */}
         <section className="oma-section space-y-3">

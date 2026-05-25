@@ -35,6 +35,8 @@ class RequestRecord(Base):
     status: Mapped[str] = mapped_column(String(32), default="active")
     status_message: Mapped[str] = mapped_column(Text, default="")
     latest_output: Mapped[str] = mapped_column(Text, default="")
+    enabled_generic_agents: Mapped[str] = mapped_column(Text, default="[]")
+    agent_topology: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -47,6 +49,8 @@ _EXTRA_COLUMNS = {
     "llm_provider_id": "VARCHAR(32) DEFAULT ''",
     "llm_model_id": "VARCHAR(64) DEFAULT ''",
     "llm_display_name": "VARCHAR(128) DEFAULT ''",
+    "enabled_generic_agents": "TEXT DEFAULT '[]'",
+    "agent_topology": "TEXT DEFAULT ''",
 }
 
 
@@ -83,6 +87,8 @@ class RequestStore:
         llm_provider_id: str = "",
         llm_model_id: str = "",
         llm_display_name: str = "",
+        enabled_generic_agents: str = "[]",
+        agent_topology: str = "",
         current_step: str = "SUBMITTED",
         status_message: str = "Request submitted.",
     ) -> RequestRecord:
@@ -105,6 +111,8 @@ class RequestStore:
             status="active",
             status_message=status_message,
             latest_output="",
+            enabled_generic_agents=enabled_generic_agents,
+            agent_topology=agent_topology,
             created_at=now,
             updated_at=now,
         )

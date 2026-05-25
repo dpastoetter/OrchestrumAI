@@ -1,10 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import {
-  api,
-  type ChatGPTOAuthStatus,
-  type ProviderCatalogItem,
-  type ProviderSettings,
-} from "../api";
+import { WorkflowAgentToggles } from "../components/WorkflowAgentToggles";
+import { api, type ChatGPTOAuthStatus, type ProviderCatalogItem, type ProviderSettings } from "../api";
+import type { GenericWorkflowAgent } from "../types";
 
 const ENV_LABELS: Record<string, string> = {
   GOOGLE_API_KEY: "Google / Gemini API key",
@@ -28,8 +25,26 @@ export function Settings() {
   const [oauthSessionId, setOauthSessionId] = useState<string | null>(null);
   const [oauthCallbackUrl, setOauthCallbackUrl] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [genericCatalog, setGenericCatalog] = useState<GenericWorkflowAgent[]>([]);
+  const [enabledGeneric, setEnabledGeneric] = useState<Set<string>>(new Set());
+  const [workflowBusy, setWorkflowBusy] = useState(false);
+
+  const providerApiError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("Not Found") || msg.includes("404")) {
+      return (
+        "Provider API is not available on the backend. Stop the old server and run " +
+        "make dev-backend from the project root, then reload this page."
+      );
+    }
+    return msg;
+  };
 
   const load = useCallback(async () => {
+    const health = await api.health();
+    if (!health.features?.includes("providers")) {
+      throw new Error("STALE_BACKEND");
+    }
     const data = await api.getProviders();
     setProviders(data.providers);
     setSettings(data.settings);
@@ -39,10 +54,27 @@ export function Settings() {
     setLmStudioUrl(data.settings.lm_studio_base_url);
     const oauth = await api.getChatGPTOAuthStatus();
     setChatgptOAuth(oauth);
+    try {
+      const [catalogRes, wfSettings] = await Promise.all([
+        api.getWorkflowGenericAgents(),
+        api.getWorkflowSettings(),
+      ]);
+      setGenericCatalog(catalogRes.agents);
+      setEnabledGeneric(new Set(wfSettings.settings.enabled_generic_agents));
+    } catch {
+      /* workflow API optional during partial deploy */
+    }
   }, []);
 
   useEffect(() => {
-    load().catch((e) => setError(String(e)));
+    load().catch((e) => {
+      const msg = String(e);
+      setError(
+        msg.includes("STALE_BACKEND")
+          ? providerApiError(new Error("Not Found"))
+          : providerApiError(e),
+      );
+    });
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -137,6 +169,29 @@ export function Settings() {
     }
   }
 
+  function toggleGenericAgent(id: string) {
+    setEnabledGeneric((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function onSaveWorkflowAgents() {
+    setWorkflowBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await api.updateWorkflowSettings([...enabledGeneric]);
+      setMessage("Workflow agent defaults saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }
+
   async function onDisconnectChatGPT() {
     setBusy(true);
     setError(null);
@@ -187,6 +242,30 @@ export function Settings() {
           Connect API keys, local Ollama/LM Studio, Gemini native, or ChatGPT Plus/Pro OAuth.
         </p>
       </div>
+
+      <section className="oma-section space-y-3">
+        <div>
+          <h3 className="oma-label">Workflow agents (General workflow)</h3>
+          <p className="oma-hint mt-0.5">
+            Specialist sub-agents the orchestrator can delegate to during execution. Defaults apply
+            to new workflow requests; override per request on Submit.
+          </p>
+        </div>
+        <WorkflowAgentToggles
+          catalog={genericCatalog}
+          enabled={enabledGeneric}
+          onToggle={toggleGenericAgent}
+          disabled={workflowBusy}
+        />
+        <button
+          type="button"
+          disabled={workflowBusy}
+          onClick={onSaveWorkflowAgents}
+          className="rounded border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+        >
+          Save workflow agent defaults
+        </button>
+      </section>
 
       <form onSubmit={onSave} className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/50 p-6">
         <label className="block space-y-1">

@@ -41,6 +41,47 @@ def _status_for_step(step: str) -> str:
     return "active"
 
 
+def _parse_topology_from_record(record: RequestRecord) -> dict[str, Any] | None:
+    raw = getattr(record, "agent_topology", None) or ""
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+        return parsed if isinstance(parsed, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _topology_summary_fields(record: RequestRecord) -> dict[str, Any]:
+    topo = _parse_topology_from_record(record)
+    if not topo:
+        return {"agent_topology_type": "", "agent_topology_labels": []}
+    try:
+        from workflow_agent.topology import AgentTopology
+
+        validated = AgentTopology.model_validate(topo)
+        return {
+            "agent_topology_type": validated.type,
+            "agent_topology_labels": validated.summary_labels(),
+        }
+    except Exception:
+        return {
+            "agent_topology_type": str(topo.get("type", "")),
+            "agent_topology_labels": [],
+        }
+
+
+def _parse_enabled_from_record(record: RequestRecord) -> list[str]:
+    raw = getattr(record, "enabled_generic_agents", None) or "[]"
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    try:
+        parsed = json.loads(raw)
+        return [str(x) for x in parsed] if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 def _parse_state_json(state: dict[str, Any], key: str, default: Any) -> Any:
     raw = state.get(key)
     if raw is None or raw == "":
@@ -70,6 +111,8 @@ def _record_to_summary(record: RequestRecord) -> RequestSummary:
         status=record.status,
         status_message=record.status_message,
         latest_output=record.latest_output,
+        enabled_generic_agents=_parse_enabled_from_record(record),
+        **_topology_summary_fields(record),
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -165,8 +208,12 @@ def _detail_from_state(record: RequestRecord, state: dict[str, Any]) -> RequestD
 
 
 @router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "openminiagents"}
+async def health() -> dict[str, str | list[str]]:
+    return {
+        "status": "ok",
+        "service": "openminiagents",
+        "features": ["agents", "providers", "workflow", "requests"],
+    }
 
 
 @router.get("/agents")
@@ -197,6 +244,8 @@ async def create_request_json(
         sheet_url=body.sheet_url,
         provider_id=body.provider_id,
         model_id=body.model_id,
+        enabled_generic_agents=body.enabled_generic_agents,
+        agent_topology=body.agent_topology,
         file_path="",
         file_name="",
     )
@@ -252,13 +301,37 @@ async def _create_request_impl(
     sheet_url: str,
     provider_id: str = "",
     model_id: str = "",
-    file_path: str,
-    file_name: str,
+    enabled_generic_agents: list[str] | None = None,
+    agent_topology: Any = None,
+    file_path: str = "",
+    file_name: str = "",
     extra_state: dict[str, Any] | None = None,
 ) -> RequestSummary:
     agent = normalize_agent_type(agent_type)
     if agent == "doc_to_sheets" and not file_path:
         raise HTTPException(status_code=400, detail="doc_to_sheets requires a file upload")
+
+    resolved_enabled: list[str] = []
+    topology_dict: dict[str, Any] | None = None
+    if agent == "workflow":
+        if agent_topology is not None:
+            from workflow_agent.topology import AgentTopology
+
+            try:
+                if hasattr(agent_topology, "model_dump"):
+                    raw = agent_topology.model_dump(mode="json", by_alias=True)
+                elif isinstance(agent_topology, dict):
+                    raw = agent_topology
+                else:
+                    raise ValueError("Invalid topology payload")
+                validated = AgentTopology.model_validate(raw)
+                topology_dict = validated.to_dict()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            from .workflow_settings import resolve_enabled_for_request
+
+            resolved_enabled = resolve_enabled_for_request(enabled_generic_agents)
 
     session_extra: dict[str, Any] = dict(extra_state or {})
     if file_path:
@@ -271,7 +344,11 @@ async def _create_request_impl(
     from .agents_registry import load_agent_bundle
 
     _, _, resolved = load_agent_bundle(
-        agent, provider_id=provider_id or None, model_id=model_id or None
+        agent,
+        provider_id=provider_id or None,
+        model_id=model_id or None,
+        enabled_generic_agents=resolved_enabled if agent == "workflow" and not topology_dict else None,
+        agent_topology=topology_dict if agent == "workflow" else None,
     )
 
     session_id = await _bridge.create_session(
@@ -283,6 +360,8 @@ async def _create_request_impl(
         extra_state=session_extra,
         provider_id=provider_id or None,
         model_id=model_id or None,
+        enabled_generic_agents=resolved_enabled if agent == "workflow" and not topology_dict else None,
+        agent_topology=topology_dict if agent == "workflow" else None,
     )
     record = _store.create(
         user_id=user_id,
@@ -297,6 +376,8 @@ async def _create_request_impl(
         llm_provider_id=resolved.provider_id,
         llm_model_id=resolved.model_id,
         llm_display_name=resolved.display_name,
+        enabled_generic_agents=json.dumps(resolved_enabled),
+        agent_topology=json.dumps(topology_dict) if topology_dict else "",
         status_message="Document uploaded." if agent == "doc_to_sheets" else "Request submitted.",
     )
     _event_buffers[record.id] = []

@@ -1,8 +1,10 @@
 import type {
   AgentInfo,
   CreateRequestBody,
+  GenericWorkflowAgent,
   RequestDetail,
   RequestSummary,
+  WorkflowSettings,
 } from "./types";
 
 export interface ProviderCatalogItem {
@@ -49,7 +51,10 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  health: () => fetch(`${API}/health`).then((r) => json<{ status: string }>(r)),
+  health: () =>
+    fetch(`${API}/health`).then((r) =>
+      json<{ status: string; service?: string; features?: string[] }>(r),
+    ),
 
   listAgents: () => fetch(`${API}/agents`).then((r) => json<AgentInfo[]>(r)),
 
@@ -131,4 +136,21 @@ export const api = {
     fetch(`${API}/providers/chatgpt-oauth/disconnect`, { method: "POST" }).then((r) =>
       json<{ ok: boolean }>(r),
     ),
+
+  getWorkflowGenericAgents: () =>
+    fetch(`${API}/workflow/generic-agents`).then((r) =>
+      json<{ agents: GenericWorkflowAgent[] }>(r),
+    ),
+
+  getWorkflowSettings: () =>
+    fetch(`${API}/workflow/settings`).then((r) =>
+      json<{ settings: WorkflowSettings }>(r),
+    ),
+
+  updateWorkflowSettings: (enabled_generic_agents: string[]) =>
+    fetch(`${API}/workflow/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled_generic_agents }),
+    }).then((r) => json<{ settings: WorkflowSettings }>(r)),
 };

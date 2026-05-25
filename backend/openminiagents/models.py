@@ -9,6 +9,28 @@ from pydantic import BaseModel, Field
 
 AgentType = Literal["workflow", "doc_to_sheets"]
 Priority = Literal["low", "normal", "high"]
+TopologyType = Literal["simple", "sequential", "orchestrator"]
+
+
+class TopologyEdgeBody(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+
+    model_config = {"populate_by_name": True}
+
+
+class TopologyNodeBody(BaseModel):
+    id: str
+    kind: Literal["catalog", "custom"]
+    catalog_id: str | None = None
+    name: str = ""
+    instruction: str = ""
+
+
+class AgentTopologyBody(BaseModel):
+    type: TopologyType
+    nodes: list[TopologyNodeBody] = Field(default_factory=list)
+    edges: list[TopologyEdgeBody] = Field(default_factory=list)
 
 
 class CreateRequestBody(BaseModel):
@@ -19,6 +41,9 @@ class CreateRequestBody(BaseModel):
     sheet_url: str = ""
     provider_id: str = ""
     model_id: str = ""
+    # None = use Settings defaults; [] = no sub-agents; non-empty = override
+    enabled_generic_agents: list[str] | None = None
+    agent_topology: AgentTopologyBody | None = None
 
 
 class ResumeRequestBody(BaseModel):
@@ -46,6 +71,9 @@ class RequestSummary(BaseModel):
     status: str
     status_message: str
     latest_output: str = ""
+    enabled_generic_agents: list[str] = Field(default_factory=list)
+    agent_topology_type: str = ""
+    agent_topology_labels: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
