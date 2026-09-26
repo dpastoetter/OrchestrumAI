@@ -21,6 +21,7 @@ venv/
 # IDE
 .idea/
 .vscode/
+.cursor/debug-*.log
 
 # App data
 data/

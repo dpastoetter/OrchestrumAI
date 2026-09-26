@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .automation_settings import get_automation_settings
 from .request_store import RequestRecord
+from .safe_url import validate_http_url
 
 log = logging.getLogger(__name__)
 _seen_awaiting: set[str] = set()
@@ -51,8 +53,7 @@ def _fire_webhook(record: RequestRecord) -> None:
     if not url:
         return
     try:
-        import urllib.request
-
+        url = validate_http_url(url, allow_private=True)
         payload = json.dumps(
             {
                 "event": "request_status",

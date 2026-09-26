@@ -46,6 +46,20 @@ export interface ChatGPTOAuthStatus {
 }
 
 const API = "/api";
+const API_TOKEN = (import.meta.env.VITE_ORCHESTRUMAI_API_TOKEN as string | undefined)?.trim() || "";
+
+function apiHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
+  if (API_TOKEN) {
+    headers.set("X-OrchestrumAI-Token", API_TOKEN);
+  }
+  return headers;
+}
+
+function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = apiHeaders(init?.headers);
+  return fetch(input, { ...init, headers });
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -57,19 +71,19 @@ async function json<T>(res: Response): Promise<T> {
 
 export const api = {
   health: () =>
-    fetch(`${API}/health`).then((r) =>
+    apiFetch(`${API}/health`).then((r) =>
       json<{ status: string; service?: string; features?: string[] }>(r),
     ),
 
-  listAgents: () => fetch(`${API}/agents`).then((r) => json<AgentInfo[]>(r)),
+  listAgents: () => apiFetch(`${API}/agents`).then((r) => json<AgentInfo[]>(r)),
 
-  listRequests: () => fetch(`${API}/requests`).then((r) => json<RequestSummary[]>(r)),
+  listRequests: () => apiFetch(`${API}/requests`).then((r) => json<RequestSummary[]>(r)),
 
   getRequest: (id: string) =>
-    fetch(`${API}/requests/${id}`).then((r) => json<RequestDetail>(r)),
+    apiFetch(`${API}/requests/${id}`).then((r) => json<RequestDetail>(r)),
 
   deleteRequest: (id: string) =>
-    fetch(`${API}/requests/${id}`, { method: "DELETE" }).then((r) => {
+    apiFetch(`${API}/requests/${id}`, { method: "DELETE" }).then((r) => {
       if (!r.ok) {
         return r.text().then((text) => {
           throw new Error(text || r.statusText);
@@ -78,20 +92,20 @@ export const api = {
     }),
 
   createRequest: (body: CreateRequestBody) =>
-    fetch(`${API}/requests`, {
+    apiFetch(`${API}/requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<RequestSummary>(r)),
 
   createRequestWithFile: (form: FormData) =>
-    fetch(`${API}/requests/upload`, {
+    apiFetch(`${API}/requests/upload`, {
       method: "POST",
       body: form,
     }).then((r) => json<RequestSummary>(r)),
 
   resumeRequest: (id: string, decision: "approved" | "rejected", comment = "") =>
-    fetch(`${API}/requests/${id}/resume`, {
+    apiFetch(`${API}/requests/${id}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision, comment }),
@@ -100,7 +114,7 @@ export const api = {
   eventsUrl: (id: string) => `${API}/requests/${id}/events`,
 
   getProviders: () =>
-    fetch(`${API}/providers`).then((r) =>
+    apiFetch(`${API}/providers`).then((r) =>
       json<{ providers: ProviderCatalogItem[]; settings: ProviderSettings }>(r),
     ),
 
@@ -111,7 +125,7 @@ export const api = {
     ollama_host?: string;
     lm_studio_base_url?: string;
   }) =>
-    fetch(`${API}/providers/settings`, {
+    apiFetch(`${API}/providers/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -120,44 +134,44 @@ export const api = {
     ),
 
   testProvider: (providerId: string, modelId?: string) =>
-    fetch(`${API}/providers/test`, {
+    apiFetch(`${API}/providers/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider_id: providerId, model_id: modelId || null }),
     }).then((r) => json<{ ok: boolean; message: string }>(r)),
 
   getChatGPTOAuthStatus: () =>
-    fetch(`${API}/providers/chatgpt-oauth/status`).then((r) => json<ChatGPTOAuthStatus>(r)),
+    apiFetch(`${API}/providers/chatgpt-oauth/status`).then((r) => json<ChatGPTOAuthStatus>(r)),
 
   connectChatGPTOAuth: () =>
-    fetch(`${API}/providers/chatgpt-oauth/connect`, { method: "POST" }).then((r) =>
+    apiFetch(`${API}/providers/chatgpt-oauth/connect`, { method: "POST" }).then((r) =>
       json<ChatGPTOAuthConnect>(r),
     ),
 
   pollChatGPTOAuthSession: (sessionId: string) =>
-    fetch(`${API}/providers/chatgpt-oauth/session/${sessionId}`).then((r) =>
+    apiFetch(`${API}/providers/chatgpt-oauth/session/${sessionId}`).then((r) =>
       json<{ status: string; error?: string; account?: ChatGPTOAuthStatus["account"] }>(r),
     ),
 
   submitChatGPTOAuthCallback: (sessionId: string, callbackUrl: string) =>
-    fetch(`${API}/providers/chatgpt-oauth/callback`, {
+    apiFetch(`${API}/providers/chatgpt-oauth/callback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, callback_url: callbackUrl }),
     }).then((r) => json<{ status: string; error?: string }>(r)),
 
   disconnectChatGPTOAuth: () =>
-    fetch(`${API}/providers/chatgpt-oauth/disconnect`, { method: "POST" }).then((r) =>
+    apiFetch(`${API}/providers/chatgpt-oauth/disconnect`, { method: "POST" }).then((r) =>
       json<{ ok: boolean }>(r),
     ),
 
   getWorkflowGenericAgents: () =>
-    fetch(`${API}/workflow/generic-agents`).then((r) =>
+    apiFetch(`${API}/workflow/generic-agents`).then((r) =>
       json<{ agents: GenericWorkflowAgent[] }>(r),
     ),
 
   getWorkflowSettings: () =>
-    fetch(`${API}/workflow/settings`).then((r) =>
+    apiFetch(`${API}/workflow/settings`).then((r) =>
       json<{ settings: WorkflowSettings }>(r),
     ),
 
@@ -165,41 +179,41 @@ export const api = {
     enabled_generic_agents?: string[];
     advanced_mode?: boolean;
   }) =>
-    fetch(`${API}/workflow/settings`, {
+    apiFetch(`${API}/workflow/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<{ settings: WorkflowSettings }>(r)),
 
   listWorkflowTemplates: () =>
-    fetch(`${API}/workflow-templates`).then((r) =>
+    apiFetch(`${API}/workflow-templates`).then((r) =>
       json<{ templates: WorkflowTemplate[] }>(r),
     ),
 
   getWorkflowTemplate: (id: string) =>
-    fetch(`${API}/workflow-templates/${id}`).then((r) => json<WorkflowTemplate>(r)),
+    apiFetch(`${API}/workflow-templates/${id}`).then((r) => json<WorkflowTemplate>(r)),
 
   createWorkflowTemplate: (body: WorkflowTemplateBody) =>
-    fetch(`${API}/workflow-templates`, {
+    apiFetch(`${API}/workflow-templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<WorkflowTemplate>(r)),
 
   updateWorkflowTemplate: (id: string, body: WorkflowTemplateBody) =>
-    fetch(`${API}/workflow-templates/${id}`, {
+    apiFetch(`${API}/workflow-templates/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<WorkflowTemplate>(r)),
 
   deleteWorkflowTemplate: (id: string) =>
-    fetch(`${API}/workflow-templates/${id}`, { method: "DELETE" }).then((r) => {
+    apiFetch(`${API}/workflow-templates/${id}`, { method: "DELETE" }).then((r) => {
       if (!r.ok) throw new Error(r.statusText);
     }),
 
   runWorkflowTemplate: (id: string, body?: { title?: string; description_vars?: Record<string, string> }) =>
-    fetch(`${API}/workflow-templates/${id}/run`, {
+    apiFetch(`${API}/workflow-templates/${id}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
@@ -209,7 +223,7 @@ export const api = {
     requestId: string,
     body: { name: string; description_template?: string; icon?: string; category?: string },
   ) =>
-    fetch(`${API}/requests/${requestId}/save-as-template`, {
+    apiFetch(`${API}/requests/${requestId}/save-as-template`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -218,55 +232,55 @@ export const api = {
   exportWorkflowTemplateUrl: (id: string) => `${API}/workflow-templates/${id}/export`,
 
   importWorkflowTemplate: (body: WorkflowTemplateBody) =>
-    fetch(`${API}/workflow-templates/import`, {
+    apiFetch(`${API}/workflow-templates/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<WorkflowTemplate>(r)),
 
   listWorkflowSchedules: () =>
-    fetch(`${API}/workflow-schedules`).then((r) =>
+    apiFetch(`${API}/workflow-schedules`).then((r) =>
       json<{ schedules: WorkflowSchedule[] }>(r),
     ),
 
   createWorkflowSchedule: (body: WorkflowScheduleBody) =>
-    fetch(`${API}/workflow-schedules`, {
+    apiFetch(`${API}/workflow-schedules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<WorkflowSchedule>(r)),
 
   updateWorkflowSchedule: (id: string, body: WorkflowScheduleBody) =>
-    fetch(`${API}/workflow-schedules/${id}`, {
+    apiFetch(`${API}/workflow-schedules/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<WorkflowSchedule>(r)),
 
   deleteWorkflowSchedule: (id: string) =>
-    fetch(`${API}/workflow-schedules/${id}`, { method: "DELETE" }).then((r) => {
+    apiFetch(`${API}/workflow-schedules/${id}`, { method: "DELETE" }).then((r) => {
       if (!r.ok) throw new Error(r.statusText);
     }),
 
   triggerWorkflowSchedule: (id: string) =>
-    fetch(`${API}/workflow-schedules/${id}/trigger`, { method: "POST" }).then((r) =>
+    apiFetch(`${API}/workflow-schedules/${id}/trigger`, { method: "POST" }).then((r) =>
       json<RequestSummary>(r),
     ),
 
   getAutomationSettings: () =>
-    fetch(`${API}/automation/settings`).then((r) =>
+    apiFetch(`${API}/automation/settings`).then((r) =>
       json<{ settings: AutomationSettings }>(r),
     ),
 
   updateAutomationSettings: (body: Partial<AutomationSettings>) =>
-    fetch(`${API}/automation/settings`, {
+    apiFetch(`${API}/automation/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => json<{ settings: AutomationSettings }>(r)),
 
   scanInbox: () =>
-    fetch(`${API}/automation/scan-inbox`, { method: "POST" }).then((r) =>
+    apiFetch(`${API}/automation/scan-inbox`, { method: "POST" }).then((r) =>
       json<{ created: number }>(r),
     ),
 };

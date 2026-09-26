@@ -293,9 +293,12 @@ async def resume_request(
 
 
 @router.get("/requests/{request_id}/events")
-async def request_events(request_id: str) -> EventSourceResponse:
+async def request_events(
+    request_id: str,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+) -> EventSourceResponse:
     record = _store.get(request_id)
-    if record is None:
+    if record is None or record.user_id != _user_id(x_user_id):
         raise HTTPException(status_code=404, detail="Request not found")
 
     async def generator():

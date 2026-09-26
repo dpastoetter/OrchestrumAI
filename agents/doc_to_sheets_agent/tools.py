@@ -25,11 +25,26 @@ def _set_step(tool_context: ToolContext, step: str, **extra: str) -> dict[str, s
     return {"current_step": step, **extra}
 
 
+def _resolve_upload_path(tool_context: ToolContext) -> Path | None:
+    path_str = str(tool_context.state.get("file_path", "")).strip()
+    if not path_str:
+        return None
+    from orchestrumai.config import UPLOADS_DIR
+
+    path = Path(path_str).resolve()
+    uploads_root = UPLOADS_DIR.resolve()
+    if uploads_root not in path.parents and path != uploads_root:
+        return None
+    if not path.is_file():
+        return None
+    return path
+
+
 def parse_document(tool_context: ToolContext) -> dict[str, object]:
     """Read the uploaded file and extract structured rows into session state."""
-    file_path = str(tool_context.state.get("file_path", ""))
-    if not file_path:
-        return {"error": "No file_path in session state"}
+    path = _resolve_upload_path(tool_context)
+    if path is None:
+        return {"error": "No valid uploaded file_path in session state"}
 
     from orchestrumai.config import STUB_RUN
     from orchestrumai.document_parser import default_column_mapping, extract_table
@@ -39,7 +54,7 @@ def parse_document(tool_context: ToolContext) -> dict[str, object]:
     provider_id = str(tool_context.state.get("llm_provider_id", "")) or None
     model_id = str(tool_context.state.get("llm_model_id", "")) or None
     table = extract_table(
-        file_path,
+        str(path),
         mime_type=mime_type,
         description=description,
         stub=STUB_RUN,

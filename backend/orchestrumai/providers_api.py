@@ -16,6 +16,7 @@ from .llm_providers import (
 )
 from . import chatgpt_oauth
 from .provider_settings import get_provider_settings, settings_for_api, update_provider_settings
+from .safe_url import UnsafeUrlError, validate_http_url
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,19 @@ class ChatGPTOAuthCallbackBody(BaseModel):
     callback_url: str
 
 
+def _validate_local_provider_url(url: str | None, field: str) -> str | None:
+    if url is None:
+        return None
+    cleaned = url.strip()
+    if not cleaned:
+        return ""
+    try:
+        # Local LLM hosts are expected on loopback/LAN.
+        return validate_http_url(cleaned, allow_private=True)
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {field}: {exc}") from exc
+
+
 @router.get("/providers")
 async def list_providers() -> dict:
     return {"providers": catalog_for_api(), "settings": settings_for_api()}
@@ -49,12 +63,14 @@ async def list_providers() -> dict:
 async def put_settings(body: UpdateSettingsBody) -> dict:
     if body.default_provider_id and get_provider(body.default_provider_id) is None:
         raise HTTPException(status_code=400, detail="Unknown provider_id")
+    ollama_host = _validate_local_provider_url(body.ollama_host, "ollama_host")
+    lm_studio_base_url = _validate_local_provider_url(body.lm_studio_base_url, "lm_studio_base_url")
     update_provider_settings(
         default_provider_id=body.default_provider_id,
         default_model_id=body.default_model_id,
         api_keys=body.api_keys or None,
-        ollama_host=body.ollama_host,
-        lm_studio_base_url=body.lm_studio_base_url,
+        ollama_host=ollama_host,
+        lm_studio_base_url=lm_studio_base_url,
     )
     from .runner_bridge import get_runner_bridge
 
